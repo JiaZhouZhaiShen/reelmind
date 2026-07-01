@@ -1,0 +1,155 @@
+"""Scene segmentation service -- TransNetV2.
+
+Processes video: extracts 1fps frames, runs TransNetV2, returns scene list.
+"""
+
+from __future__ import annotations
+import logging
+import os
+from pathlib import Path
+from typing import Any
+from typing import Any, Optional
+from configs import scene as scene_cfg
+
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
+logger = logging.getLogger(__name__)
+
+_transnet_model = None
+
+
+def _load_transnet():
+    global _transnet_model
+    if _transnet_model is not None:
+        return _transnet_model
+
+    import torch
+    import torch.nn  # noqa: F401
+    from transnetv2_pytorch import TransNetV2
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info("Loading TransNetV2 on %s ...", device)
+    _transnet_model = TransNetV2()
+    _transnet_model = _transnet_model.to(device)
+    _transnet_model.eval()
+
+    if device == "cuda":
+        alloc = torch.cuda.memory_allocated() / 1073741824
+        logger.info("TransNetV2 loaded. CUDA: %.2f GB", alloc)
+
+    return _transnet_model
+
+
+def detect_scenes(video_path: str | Path) -> list[dict[str, Any]]:
+    """Detect scene boundaries using TransNetV2 (v1.0+ predict_video API).
+
+    Returns:
+        [{index, start_time, end_time, thumbnail_path?}, ...]
+    """
+    import torch
+    import numpy as np
+
+    model = _load_transnet()
+
+    with torch.no_grad():
+        frames, preds_onehot, preds_sim = model.predict_video(str(video_path), quiet=True)
+
+    video_fps = model.get_video_fps(str(video_path))
+    total_predictions = len(preds_sim)
+    if total_predictions > 0:
+        duration = total_predictions / video_fps
+    else:
+        import cv2
+        cap = cv2.VideoCapture(str(video_path))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+        duration = total_frames / fps if fps > 0 else 0
+
+    # Use raw similarity scores with configurable threshold
+    preds_np = preds_sim.cpu().numpy().flatten()
+    cut_indices = np.where(preds_np > scene_cfg.threshold)[0]
+
+    # Build initial segments as (start_frame, end_frame)
+    segments = []
+    prev_frame = 0
+    for cut in cut_indices:
+        segments.append((prev_frame, cut))
+        prev_frame = cut
+    if total_predictions > 0:
+        segments.append((prev_frame, total_predictions))
+
+    # Merge short scenes (min_scene_len is in seconds, convert to frames)
+    min_frames = int(scene_cfg.min_scene_len * video_fps)
+    if min_frames > 1 and segments:
+        merged = [segments[0]]
+        for seg in segments[1:]:
+            prev_start, prev_end = merged[-1]
+            curr_start, curr_end = seg
+            curr_len = curr_end - curr_start
+            if curr_len < min_frames:
+                merged[-1] = (prev_start, curr_end)
+            else:
+                merged.append(seg)
+        segments = merged
+
+    # Convert segments to scene dicts
+    scenes = []
+    for idx, (start_frame, end_frame) in enumerate(segments):
+        start_sec = start_frame / video_fps
+        end_sec = end_frame / video_fps
+        scenes.append({
+            "index": idx,
+            "start_time": float(start_sec),
+            "end_time": float(end_sec),
+            "thumbnail_time": float(start_sec),
+        })
+
+    logger.info(
+        "TransNetV2: %s -> %d scenes (threshold=%.1f, min_scene_len=%ds)",
+        Path(video_path).name, len(scenes),
+        scene_cfg.threshold, scene_cfg.min_scene_len,
+    )
+    return scenes
+
+
+def _unload_transnet():
+    global _transnet_model
+    if _transnet_model is None:
+        return
+    import gc
+    logger.info("Unloading TransNetV2 ...")
+    _transnet_model = None
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
+def extract_thumbnail(video_path: str | Path, time_sec: float, output_path: str | Path | None = None) -> Optional[bytes]:
+    """Extract a single frame as JPEG bytes at given timestamp.
+
+    If output_path is provided, saves to disk and returns bytes anyway.
+    Returns None on failure.
+    """
+    import cv2
+    cap = cv2.VideoCapture(str(video_path))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_idx = int(time_sec * fps) if fps > 0 else int(time_sec * 30)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        return None
+    ret2, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    if not ret2:
+        return None
+    jpeg_bytes = buf.tobytes()
+    if output_path:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, 'wb') as f:
+            f.write(jpeg_bytes)
+    return jpeg_bytes

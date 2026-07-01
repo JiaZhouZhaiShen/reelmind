@@ -1,0 +1,254 @@
+# =============================================================================
+# ReelMind — Docker Compose for Production / Synology NAS
+# =============================================================================
+# 使用方法:
+#   1. 复制 .env.example 为 .env，按需修改
+#   2. docker compose up -d
+# =============================================================================
+name: reelmind
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # PostgreSQL 16 + pgvector — 视频元数据 + CLIP 向量
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: reelmind-postgres
+    logging: *default-logging
+    restart: always
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: ${DB_USER:-reelmind}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-reelmind}
+      POSTGRES_DB: ${DB_NAME:-reelmind}
+      POSTGRES_SHARED_BUFFERS: ${PG_SHARED_BUFFERS:-256MB}
+      POSTGRES_EFFECTIVE_CACHE_SIZE: ${PG_EFFECTIVE_CACHE:-768MB}
+      POSTGRES_WORK_MEM: ${PG_WORK_MEM:-16MB}
+      POSTGRES_MAINTENANCE_WORK_MEM: ${PG_MAINT_WORK_MEM:-64MB}
+    volumes:
+      - ${PGDATA_ROOT:-./data/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-reelmind}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - reelmind-net
+    deploy:
+      resources:
+        limits:
+          memory: ${PG_MEM_LIMIT:-1g}
+        reservations:
+          memory: ${PG_MEM_RESERVE:-256M}
+
+  # Redis 7 — 通用缓存/队列
+  redis:
+    image: redis:7-alpine
+    container_name: reelmind-redis
+    logging: *default-logging
+    restart: always
+    command: >
+      redis-server
+      --maxmemory ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT_MAP:-127.0.0.1:6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    networks:
+      - reelmind-net
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEM_LIMIT:-512m}
+        reservations:
+          memory: ${REDIS_MEM_RESERVE:-64M}
+
+  # ReelMind API Server (FastAPI)
+  reelmind-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.slim
+    image: reelmind/server-slim:latest
+    container_name: reelmind-server
+    logging: *default-logging
+    restart: always
+    ports:
+      - "${PORT_MAP:-0.0.0.0:2588}:${PORT:-2588}"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-reelmind}
+      DB_PASSWORD: ${DB_PASSWORD:-reelmind}
+      DB_NAME: ${DB_NAME:-reelmind}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: ${REDIS_DB:-0}
+      DATA_ROOT: /data/reelmind/data
+      CACHE_ROOT: /data/reelmind/cache
+      MODEL_ROOT: /data/reelmind/models
+      ULTRALYTICS_CACHE_DIR: /data/reelmind/models/ultralytics
+      DEBUG: "false"
+      HOST: 0.0.0.0
+      PORT: ${PORT:-2588}
+      PROXY_VIDEO_BITRATE: ${PROXY_VIDEO_BITRATE:-1M}
+      PROXY_VIDEO_MAX_WIDTH: ${PROXY_VIDEO_MAX_WIDTH:-960}
+      THUMBNAIL_QUALITY: ${THUMBNAIL_QUALITY:-80}
+      AI_SERVICE_URL: http://reelmind-ai:2589
+      FFMPEG_PATH: ${FFMPEG_PATH:-ffmpeg}
+      FFPROBE_PATH: ${FFPROBE_PATH:-ffprobe}
+      TZ: Asia/Shanghai
+    volumes:
+      - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind
+      - ${EXTERNAL_MEDIA_DIR:-./media}:/media:ro
+      - nas-media:/nas-media:rw
+      - ./web/dist:/web/dist:ro
+      - ./server:/app
+      - ./.env:/reelmind.env:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/project
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-2588}/api/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - reelmind-net
+    deploy:
+      resources:
+        limits:
+          memory: ${SERVER_MEM_LIMIT:-2g}
+          cpus: ${SERVER_CPU_LIMIT:-2.0}
+        reservations:
+          memory: ${SERVER_MEM_RESERVE:-2g}
+
+  # ReelMind Orchestrator — lightweight job scheduler (CPU-only)
+  reelmind-orchestrator:
+    build:
+      context: .
+      dockerfile: server/orchestrator/Dockerfile
+    image: reelmind/orchestrator:latest
+    container_name: reelmind-orchestrator
+    logging: *default-logging
+    restart: always
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-reelmind}
+      DB_PASSWORD: ${DB_PASSWORD:-reelmind}
+      DB_NAME: ${DB_NAME:-reelmind}
+      ORCHESTRATOR_POLL_INTERVAL: ${ORCHESTRATOR_POLL_INTERVAL:-5}
+      ORCHESTRATOR_JOB_TIMEOUT: ${ORCHESTRATOR_JOB_TIMEOUT:-180}
+      ORCHESTRATOR_MAX_RETRIES: ${ORCHESTRATOR_MAX_RETRIES:-3}
+      ORCHESTRATOR_BATCH_SIZE: ${ORCHESTRATOR_BATCH_SIZE:-5}
+      TZ: Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server/orchestrator:/app
+      - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind
+    networks:
+      - reelmind-net
+    deploy:
+      resources:
+        limits:
+          memory: ${ORCHESTRATOR_MEM_LIMIT:-128m}
+          cpus: ${ORCHESTRATOR_CPU_LIMIT:-0.5}
+        reservations:
+          memory: ${ORCHESTRATOR_MEM_RESERVE:-32M}
+
+  # ReelMind AI Service — GPU-powered video processing (standalone)
+  reelmind-ai:
+    build:
+      context: .
+      dockerfile: server/ai_service/Dockerfile
+    image: reelmind/ai:latest
+    container_name: reelmind-ai
+    logging: *default-logging
+    runtime: nvidia
+    restart: always
+    ports:
+      - "2589:2589"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-reelmind}
+      DB_PASSWORD: ${DB_PASSWORD:-reelmind}
+      DB_NAME: ${DB_NAME:-reelmind}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: ${REDIS_DB:-0}
+      DATA_ROOT: /data/reelmind/data
+      CACHE_ROOT: /data/reelmind/cache
+      MODEL_ROOT: /data/reelmind/models
+      ULTRALYTICS_CACHE_DIR: /data/reelmind/models/ultralytics
+      ENABLE_WHISPER: ${ENABLE_WHISPER:-true}
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      ENABLE_CLIP: ${ENABLE_CLIP:-true}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      HF_HOME: /data/reelmind/models/huggingface
+      HF_HUB_CACHE: /data/reelmind/models/hub
+      TORCH_HOME: /data/reelmind/models/torch
+      PADDLE_HOME: /data/reelmind/models/paddle
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+      TZ: Asia/Shanghai
+      FFPROBE_CONCURRENCY: ${FFPROBE_CONCURRENCY:-8}
+      DEBUG: ${DEBUG:-false}
+      PROXY_VIDEO_BITRATE: ${PROXY_VIDEO_BITRATE:-1M}
+      PROXY_VIDEO_MAX_WIDTH: ${PROXY_VIDEO_MAX_WIDTH:-960}
+      FFMPEG_PATH: ${FFMPEG_PATH:-ffmpeg}
+      FFPROBE_PATH: ${FFPROBE_PATH:-ffprobe}
+    volumes:
+      - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind
+      - ${EXTERNAL_MEDIA_DIR:-./media}:/media:ro
+      - nas-media:/nas-media:rw
+      - ./server/ai_service:/app
+      - ./server:/server
+    command: ["/app/docker-entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2589/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - reelmind-net
+    deploy:
+      resources:
+        limits:
+          memory: ${AI_MEM_LIMIT:-14g}
+          cpus: ${AI_CPU_LIMIT:-16.0}
+        reservations:
+          memory: ${AI_MEM_RESERVE:-4g}
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+networks:
+  reelmind-net:
+    name: reelmind-network
+    driver: bridge
+
+volumes:
+  nas-media:
+    external: true

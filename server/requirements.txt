@@ -1,0 +1,25 @@
+# Server-only dependencies (AI packages moved to reelmind-ai container)
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+sqlalchemy==2.0.31
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+alembic==1.13.1
+pgvector==0.3.6
+pydantic==2.7.4
+pydantic-settings==2.3.4
+python-multipart==0.0.9
+redis==5.0.7
+ffmpeg-python==0.2.0
+Pillow>=10.0.0,<12.0.0
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+srt==3.5.3
+httpx==0.27.0
+s3fs==2024.6.1
+python-dotenv==1.0.1
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+ecdsa==0.18.0
+rsa==4.9

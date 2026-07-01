@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>标识图标形状选择</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#0f172a; color:#e2e8f0; font-family:system-ui,-apple-system,sans-serif; padding:20px; max-width:960px; margin:0 auto; }
+  h1 { font-size:18px; font-weight:600; margin-bottom:4px; color:#f1f5f9; }
+  h2 { font-size:14px; font-weight:600; margin:20px 0 10px; padding-bottom:4px; border-bottom:1px solid #1e293b; color:#94a3b8; }
+  .sub { font-size:12px; color:#64748b; margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(90px,1fr)); gap:8px; margin-bottom:20px; }
+  .item { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:10px 4px; text-align:center; cursor:pointer; transition:all .15s; }
+  .item:hover { border-color:#6366f1; background:#1e1b4b; }
+  .item.selected { border-color:#22d3ee; background:#164e63; box-shadow:0 0 0 2px #22d3ee44; }
+  .item .icon-wrap { display:flex; align-items:center; justify-content:center; height:28px; }
+  .item .name { font-size:10px; color:#94a3b8; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .current-set { background:#1e293b; border-radius:8px; padding:12px; margin-bottom:16px; }
+  .current-set .label { font-size:11px; color:#64748b; margin-bottom:8px; }
+  .current-set .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .info { margin-top:24px; padding:12px; background:#1e293b; border-radius:8px; font-size:11px; color:#64748b; }
+</style>
+</head>
+<body>
+<h1>图标形状选择</h1>
+<p class="sub">点击每类下的图标选中（蓝色高亮），告诉我选定的名称即可应用。</p>
+
+<div class="current-set">
+  <div class="label"><strong>当前使用</strong>（上次设置的）</div>
+  <div class="row">
+    <div class="badge" style="background:#0891b280;border-radius:4px;padding:4px 6px;display:flex;align-items:center;gap:3px"><i data-lucide="layers" style="color:#fff;width:12px;height:12px"></i><span style="color:#fff;font-size:10px">有场景</span></div>
+    <div class="badge" style="background:#db277780;border-radius:4px;padding:4px 6px;display:flex;align-items:center;gap:3px"><i data-lucide="message-square-text" style="color:#fff;width:12px;height:12px"></i><span style="color:#fff;font-size:10px">有字幕</span></div>
+    <div class="badge" style="background:#d9770680;border-radius:4px;padding:4px 6px;display:flex;align-items:center;gap:3px"><i data-lucide="tags" style="color:#fff;width:12px;height:12px"></i><span style="color:#fff;font-size:10px">有标识</span></div>
+    <div class="badge" style="background:#7c3aed80;border-radius:4px;padding:4px 6px;display:flex;align-items:center;gap:3px"><i data-lucide="scan-text" style="color:#fff;width:12px;height:12px"></i><span style="color:#fff;font-size:10px">有OCR</span></div>
+  </div>
+</div>
+
+<h2>有场景 — 可选图标</h2>
+<div class="grid" id="scene-icons"></div>
+<h2>有字幕 — 可选图标</h2>
+<div class="grid" id="transcript-icons"></div>
+<h2>有标识 — 可选图标</h2>
+<div class="grid" id="tag-icons"></div>
+<h2>有OCR — 可选图标</h2>
+<div class="grid" id="ocr-icons"></div>
+<div class="info">点击选中后告诉我你为每类选定的图标名称即可应用。上一页的图标也都在这里了。</div>
+
+<script>
+const sceneIcons = [
+  'image','images','image-play','layers','mountain','landmark',
+  'camera','aperture','palette','film','frame','shapes',
+  'square-stack','grid-3x3','layout-dashboard','picture-in-picture',
+  'land-plot','trees','sun','compass','globe','binoculars','gem'
+];
+const transcriptIcons = [
+  'message-square-text','message-circle-text','message-square','message-circle',
+  'audio-lines','audio-waveform','mic','mic-2','mic-vocal',
+  'text','type','quote','volume-2','spline','pen-tool',
+  'clipboard-pen','clipboard-edit','edit','list-music'
+];
+const tagIcons = [
+  'tags','tag','bookmark','bookmark-check','flag','badge-check',
+  'badge-info','badge-alert','badge-plus','badge-x','award',
+  'star','stars','sparkle','wand','square-check-big',
+  'swatch-book','clipboard-signature','file-badge','square-pen','hash'
+];
+const ocrIcons = [
+  'scan-text','scan','scan-search','scan-eye','scan-barcode',
+  'file-text','file-scan','file-search','file-search-2','file-badge-2',
+  'text-select','text-search','search','search-code',
+  'notepad-text','notebook-text','clipboard-type','clipboard-list',
+  'square-code','square-terminal','barcode','eye',
+  'crosshair','target','list-checks','list'
+];
+
+function render(cid, icons, current) {
+  const c = document.getElementById(cid);
+  icons.forEach(n => {
+    const d = document.createElement('div');
+    d.className = 'item' + (n===current?' selected':'');
+    d.innerHTML = '<div class="icon-wrap"><i data-lucide="'+n+'" style="width:18px;height:18px;color:#e2e8f0"></i></div><div class="name">'+n+'</div>';
+    d.onclick = () => { c.querySelectorAll('.item').forEach(e=>e.classList.remove('selected')); d.classList.add('selected'); };
+    c.appendChild(d);
+  });
+}
+render('scene-icons',sceneIcons,'layers');
+render('transcript-icons',transcriptIcons,'message-square-text');
+render('tag-icons',tagIcons,'tags');
+render('ocr-icons',ocrIcons,'scan-text');
+lucide.createIcons();
+</script>
+</body>
+</html>

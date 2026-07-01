@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>标识图标配色方案</title>
+<style>
+  body { background:#0f172a; color:#e2e8f0; font-family:system-ui,-apple-system,sans-serif; padding:32px; max-width:800px; margin:0 auto; }
+  h1 { font-size:18px; font-weight:600; margin-bottom:4px; color:#f1f5f9; }
+  .sub { font-size:12px; color:#64748b; margin-bottom:20px; }
+  .group { margin-bottom:24px; padding:16px; border:1px solid #1e293b; border-radius:10px; cursor:pointer; transition:all .15s; }
+  .group:hover { border-color:#475569; }
+  .group.current { border-color:#6366f1; box-shadow:0 0 0 1px #6366f1; }
+  .group h2 { font-size:13px; font-weight:600; margin:0 0 8px; color:#94a3b8; }
+  .badge-row { display:flex; gap:12px; flex-wrap:wrap; }
+  .badge { border-radius:6px; padding:6px 8px; display:inline-flex; align-items:center; gap:4px; }
+  .badge svg { width:13px; height:13px; flex-shrink:0; }
+  .badge span { font-size:10px; font-weight:500; }
+  .legend { display:flex; gap:24px; flex-wrap:wrap; margin-top:8px; }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:#94a3b8; }
+  .tag { display:inline-block; font-size:9px; padding:1px 6px; border-radius:4px; margin-left:6px; }
+</style>
+</head>
+<body>
+
+<h1>🎨 完全不同的配色方案</h1>
+<p class="sub">每组都是四个标识（有场景 / 有字幕 / 有标识 / 有OCR）的独立颜色搭配，底色统一 bg-black/50</p>
+
+<!-- 方案1：当前已应用的 -->
+<div class="group current">
+  <h2>方案1 ✅ — 天蓝·翠绿·琥珀·淡紫（你当前的）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#7dd3fc" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#7dd3fc">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#6ee7b7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#6ee7b7">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fcd34d" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#fcd34d">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#c4b5fd" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#c4b5fd">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#7dd3fc"></span>天蓝</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#6ee7b7"></span>翠绿</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fcd34d"></span>琥珀</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#c4b5fd"></span>淡紫</span>
+  </div>
+</div>
+
+<!-- 方案2：青蓝·粉红·金黄·翡翠 -->
+<div class="group">
+  <h2>方案2 — 青蓝·粉红·金黄·翡翠（冷暖搭配）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#67e8f9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#67e8f9">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fda4af" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#fda4af">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fde047" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#fde047">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#a7f3d0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#a7f3d0">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#67e8f9"></span>青蓝</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fda4af"></span>粉红</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fde047"></span>金黄</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#a7f3d0"></span>翡翠</span>
+  </div>
+  <div class="legend-item" style="font-size:9px;color:#64748b">冷暖交错，更有视觉跳跃感</div>
+</div>
+
+<!-- 方案3：靛蓝·玫瑰·橙黄·青绿 -->
+<div class="group">
+  <h2>方案3 — 靛蓝·玫瑰·橙黄·青绿（高饱和）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#818cf8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#818cf8">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fb7185" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#fb7185">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fb923c" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#fb923c">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#34d399" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#34d399">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#818cf8"></span>靛蓝</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fb7185"></span>玫瑰</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fb923c"></span>橙黄</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#34d399"></span>青绿</span>
+  </div>
+  <div class="legend-item" style="font-size:9px;color:#64748b">高饱和撞色，一眼能区分四个类型</div>
+</div>
+
+<!-- 方案4：单色系 灰度渐变 -->
+<div class="group">
+  <h2>方案4 — 灰色渐变（极简单色）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#f1f5f9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#f1f5f9">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#cbd5e1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#cbd5e1">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#94a3b8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#94a3b8">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#64748b" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#64748b">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f1f5f9"></span>纯白</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#cbd5e1"></span>浅灰</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#94a3b8"></span>中灰</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#64748b"></span>深灰</span>
+  </div>
+  <div class="legend-item" style="font-size:9px;color:#64748b">纯灰度，用明度区分，完全不出挑</div>
+</div>
+
+<!-- 方案5：暖色系 -->
+<div class="group">
+  <h2>方案5 — 暖色系（黄·橙·红·粉）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fde047" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#fde047">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fb923c" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#fb923c">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#f87171" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#f87171">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#f9a8d4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#f9a8d4">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fde047"></span>金黄</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fb923c"></span>橙黄</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f87171"></span>红色</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f9a8d4"></span>粉色</span>
+  </div>
+  <div class="legend-item" style="font-size:9px;color:#64748b">全暖色调，温暖统一</div>
+</div>
+
+<!-- 方案6：冷色系 -->
+<div class="group">
+  <h2>方案6 — 冷色系（青·蓝·紫·靛）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#5eead4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#5eead4">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#38bdf8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#38bdf8">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#818cf8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#818cf8">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#c084fc" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#c084fc">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#5eead4"></span>青绿</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#38bdf8"></span>天蓝</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#818cf8"></span>靛蓝</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#c084fc"></span>淡紫</span>
+  </div>
+  <div class="legend-item" style="font-size:9px;color:#64748b">全冷色调，冷静统一</div>
+</div>
+
+<!-- 方案7：荧光色 -->
+<div class="group">
+  <h2>方案7 — 荧光色（醒目·高辨识度）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#2dd4bf" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#2dd4bf">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#f472b6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#f472b6">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#fbbf24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#fbbf24">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#a78bfa" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#a78bfa">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#2dd4bf"></span>青</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f472b6"></span>粉</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fbbf24"></span>黄</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#a78bfa"></span>紫</span>
+  </div>
+  <div class="legend-item" style="font-size:9px;color:#64748b">高饱和亮色，在深色底上非常突出</div>
+</div>
+
+<!-- 方案8：莫兰迪色系 -->
+<div class="group">
+  <h2>方案8 — 莫兰迪色系（低饱和·高级感）</h2>
+  <div class="badge-row">
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#94a3b8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg><span style="color:#a8c5d0">有场景</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#94a3b8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-width="2"/></svg><span style="color:#b8c5a8">有字幕</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#94a3b8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2l-3 7-7 .5 5.5 5L6 21l6-3.5L18 21l-1.5-6.5L22 9.5l-7-.5L12 2z" stroke-width="2"/></svg><span style="color:#d4b896">有标识</span></div>
+    <div class="badge" style="background:rgba(0,0,0,0.5)"><svg style="color:#94a3b8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke-width="2"/><polyline points="14 2 14 8 20 8" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="2"/></svg><span style="color:#b8a8c5">有OCR</span></div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#a8c5d0"></span>雾蓝</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#b8c5a8"></span>雾绿</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#d4b896"></span>土黄</span>
+    <span class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#b8a8c5"></span>雾紫</span>
+  </div>
+  <div class="legend-item" style="font-size:9px;color:#64748b">低饱和度莫兰迪色，高级灰调，不刺眼但有区分</div>
+</div>
+
+<p style="font-size:11px;color:#475569;margin-top:16px">💡 方案1是你当前在用的。其他都是完全不同的配色思路，看看哪个合眼缘？</p>
+</body>
+</html>

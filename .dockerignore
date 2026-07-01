@@ -1,0 +1,53 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Node (frontend)
+web/node_modules/
+web/dist/
+
+# Env files
+.env
+.env.local
+.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs (not needed at runtime)
+docs/
+
+# Data
+data/
+.reelmind/
+media/
+postgres/
+redis/
+torch_wheels/
+archive/
+scripts/
+.agents/
+*.bak
+
+# Docker
+docker-compose.yml
+Dockerfile
+
+# README
+README.md

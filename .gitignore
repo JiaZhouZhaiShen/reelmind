@@ -1,0 +1,155 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Node
+node_modules/
+dist/
+
+# Env
+.env
+.env.local
+.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# ReelMind data
+.reelmind/
+postgres/
+redis/
+media/
+data/
+
+# Generated / temp scripts
+_gen_*.py
+_fix_*.py
+_clean_*.py
+_patch_*.py
+_write_*.py
+_extra*.py
+fix_*.py
+check_*.py
+tmp_*.py
+temp_*.py
+verify_*.py
+update_*.py
+patch_*.py
+process_*.py
+batch_*.py
+
+# API test files
+api_test*.json
+api_client.txt
+
+# Logs
+*.log
+vite.err
+vite.log
+
+# Images / screenshots
+*.png
+*.jpg
+*.jpeg
+
+# Text temp files
+marquee_code.txt
+response.txt
+*.bak
+*.mergebak
+
+# Docker compose backups
+original.yml
+docker-compose.backup.yml
+docker-compose2.yml
+docker-compose.bak
+
+# Docker build artifacts
+torch_wheels/
+
+# Docs / notes
+"Celery迁移与管道统一实施方案.md"
+"REELMIND Web 架构铁律与优化建议.md"
+"REELMIND 管道调度优化 — Codex 执行指令.md"
+"REELMIND 视觉设计原则与规则.md"
+"REELMIND管道架构编写铁律.md"
+"任务管理优化方案.md"
+"批量 Pipeline 流程.md"
+"系统设置优化方案.md"
+"系统设置页面交互文档.md"
+project-audit-plan.md
+pipeline-*.md
+reelmind-*.md
+
+# Misc temp files
+-w
+1054
+1056
+1084
+1086
+1310
+1312
+392
+649
+845
+libs.json
+tmp_libs.json
+tmp_auth.json
+tmp_mounts.json
+test_save.json
+test_page.html
+test_header.py
+package.json
+pnpm-lock.yaml
+.ai_backup.py
+
+# More temp/script files
+check.py
+fix.py
+ai_backup.py
+write_*.py
+test_docker_api*.py
+temp_*.txt
+temp_*.py
+
+# Codex analysis docs
+"Celery*.md"
+"REELMIND*.md"
+"任务*.md"
+"批量*.md"
+"系统*.md"
+
+# Codex analysis docs
+Celery迁移*.md
+REELMIND*.md
+任务管理*.md
+"批量 Pipeline 流程.md"
+系统设置*.md
+
+# More stray files
+server/_check_line.py
+server/_install_torch.py
+server/_verify_table.py
+server/ai_service/_replace_pending.py
+web/src/components/*.bak2
+web/src/pages/*.bak2
+web/vite-err.txt
+web/vite-out.txt
+
+# Even more stray files
+*_backup.py
+*.corrupted_backup
+*.bak2
+*.tsbuildinfo
+*dev-server.err
+yolov8n.pt
+migration_*.sql
