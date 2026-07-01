@@ -106,6 +106,7 @@ services:
       FFMPEG_PATH: ${FFMPEG_PATH:-ffmpeg}
       FFPROBE_PATH: ${FFPROBE_PATH:-ffprobe}
       TZ: Asia/Shanghai
+      CUBLAS_WORKSPACE_CONFIG: ':4096:8'
     volumes:
       - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind
       - ${EXTERNAL_MEDIA_DIR:-./media}:/media:ro

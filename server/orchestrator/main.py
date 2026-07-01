@@ -193,6 +193,17 @@ _NOTIFY_EVENT = """
     VALUES (%(event_type)s, %(batch_id)s, %(data)s::jsonb)
 """
 
+_RECLAIM_TIMED_OUT_CHUNK = """
+    UPDATE ai_engine_jobs
+    SET status = 'pending',
+        started_at = NULL,
+        completed_at = NULL,
+        error_message = 'reclaimed from timed-out chunk'
+    WHERE status = 'running'
+      AND media_id = ANY(%(media_ids)s::uuid[])
+      AND engine_name = ANY(%(engines)s::varchar[])
+"""
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Core helpers
 # ═════════════════════════════════════════════════════════════════════════════
@@ -389,6 +400,7 @@ def _wait_chunk_done(conn, media_ids: list[str], engines: list[str], timeout_min
             req2 = urllib.request.Request(f"{AI_SERVICE_URL}/health", method="GET")
             with urllib.request.urlopen(req2, timeout=3):
                 pass
+            consecutive_fail = 0
         except Exception as e:
             consecutive_fail += 1
             if consecutive_fail >= 2:
@@ -441,8 +453,17 @@ def _run_auto_schedule(conn):
         # Wait for this chunk to finish
         ok = _wait_chunk_done(conn, media_ids, engines, timeout_min)
 
-        # If timed out, continue to next auto-check cycle (recovery will handle)
+        # If timed out, immediately reclaim this chunk's jobs and break
         if not ok:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        _RECLAIM_TIMED_OUT_CHUNK,
+                        {"media_ids": media_ids, "engines": engines},
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
             logger.warning("Auto-schedule: chunk timed out batch=%s", batch_id)
             break
 

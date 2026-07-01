@@ -52,7 +52,7 @@ def detect_scenes(video_path: str | Path) -> list[dict[str, Any]]:
     model = _load_transnet()
 
     with torch.no_grad():
-        frames, preds_onehot, preds_sim = model.predict_video(str(video_path), quiet=True)
+        _, _, preds_sim = model.predict_video(str(video_path), quiet=True)
 
     video_fps = model.get_video_fps(str(video_path))
     total_predictions = len(preds_sim)
@@ -110,6 +110,17 @@ def detect_scenes(video_path: str | Path) -> list[dict[str, Any]]:
         Path(video_path).name, len(scenes),
         scene_cfg.threshold, scene_cfg.min_scene_len,
     )
+
+    # Explicit GPU/CPU memory cleanup after each video to avoid OOM accumulation
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
     return scenes
 
 

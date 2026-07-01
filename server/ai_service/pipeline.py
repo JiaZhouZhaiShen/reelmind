@@ -20,6 +20,8 @@ from typing import Any, Callable
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 import ssl as _ssl
+import subprocess
+import sys
 import urllib.request as _ur
 _original_urlopen = _ur.urlopen
 def _patched_urlopen(url, *args, **kwargs):
@@ -567,7 +569,7 @@ def process_batch(
                         duration=float(dur or 0), width=w, height=h, fps=float(fps or 0))
                     ai_s.add(video)
                     ai_s.flush()
-                    scenes_data = detect_scenes(vp)
+                    scenes_data = json.loads(subprocess.run([sys.executable, '/app/services/scene_worker.py', vp], capture_output=True, text=True, timeout=300, cwd='/app').stdout)
                     thumb_dir = thumb_base / str(asset.id)
                     thumb_dir.mkdir(parents=True, exist_ok=True)
                     for sc in scenes_data:

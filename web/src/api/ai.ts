@@ -34,8 +34,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 // ── Pipeline Execution ──
 
 
-export function getPendingAssetCount() {
-  return request<any>('/ai/pending-count');
+export function getPendingAssetCount(engines?: string[]) {
+  const params = engines?.length ? `?engines=${engines.join(',')}` : '';
+  return request<any>(`/ai/pending-count${params}`);
 }
 
 export function getScanStatusAI() {

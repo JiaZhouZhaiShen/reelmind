@@ -39,6 +39,7 @@ class AISearchRequest(BaseModel):
 _running_tasks: dict[str, dict] = {}
 _progress_queues: dict[str, _queue.Queue] = {}
 _pipeline_cancel_events: dict[str, threading.Event] = {}
+_orchestration_lock = threading.Lock()
 
 
 @router.post("/process")
@@ -902,6 +903,25 @@ async def scan_events_sse():
 # P2: _orchestrate_batch — 分批多次引擎 (手动/自动共用)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _mark_checkpoint_cancelled(batch_id: str, reason: str = "") -> None:
+    """Mark a checkpoint as cancelled (used when orchestration can't proceed)."""
+    from app.database import sync_session_factory
+    from app.models.batch_checkpoint import BatchCheckpoint
+    import uuid
+    session = sync_session_factory()
+    try:
+        uid = uuid.UUID(batch_id)
+        cp = session.query(BatchCheckpoint).filter(BatchCheckpoint.id == uid).first()
+        if cp:
+            cp.status = "cancelled"
+            session.commit()
+            logger.info("_mark_checkpoint_cancelled: %s %s", batch_id, reason)
+    except Exception:
+        logger.exception("_mark_checkpoint_cancelled failed for %s", batch_id)
+    finally:
+        session.close()
+
+
 def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = None, media_ids: list[str] | None = None) -> str | None:
     """分批多次：取全部 pending → 分 chunk → 逐批调 AI 容器 → checkpoint。
 
@@ -909,6 +929,11 @@ def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = Non
     文件过滤全部在 AI 容器的 process_batch() 入口做（铁律 ⑮）。
     如果传入了 batch_id，则使用已有 checkpoint（由调用方创建）。
     """
+    if not _orchestration_lock.acquire(blocking=False):
+        logger.warning("_orchestrate_batch[%s]: 另一个 orchestration 正在运行，跳过", task_label)
+        if batch_id is not None:
+            _mark_checkpoint_cancelled(batch_id, reason="another orchestration is running")
+        return None
     from app.database import sync_session_factory
     from app.core.job_helpers import get_pending_media_ids
     from app.models.batch_checkpoint import BatchCheckpoint
@@ -1071,6 +1096,10 @@ def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = Non
                 pass
         return None
     finally:
+        try:
+            _orchestration_lock.release()
+        except RuntimeError:
+            pass
         if session:
             session.close()
 
@@ -1107,6 +1136,12 @@ async def start_manual_batch():
     engines = config.get("engines")
     batch_size = config.get("batch_size", 100)
 
+    # ── Check if another orchestration is still running (auto batch in background) ──
+    if not _orchestration_lock.acquire(blocking=False):
+        logger.warning("start_manual_batch: orchestration lock held, manual batch rejected")
+        return {"status": "error", "message": "已有批处理任务正在运行，请等待完成后再试"}
+    _orchestration_lock.release()
+
     session = sync_session_factory()
     try:
         # ── Cancel any existing running batches to prevent parallel orchestration ──
@@ -1119,24 +1154,9 @@ async def start_manual_batch():
         if running_batches:
             session.commit()
 
-        # ── Re-run mode: reset all selected engine jobs to pending ──
-        # When manual batch is triggered, ALL selected engines are reset so
-        # they are re-processed fresh, overwriting old results.
-        # The AI container's process_batch() handles SQLite cleanup + thumbnail deletion.
-        if engines:
-            updated = session.query(AIEngineJob).filter(
-                AIEngineJob.engine_name.in_(engines),
-                AIEngineJob.status.in_(["running", "error"])
-            ).update({
-                "status": "pending",
-                "error_message": None,
-                "retry_count": 0,
-                "started_at": None,
-                "completed_at": None,
-            }, synchronize_session=False)
-            session.commit()
-            logger.info("start_manual_batch: reset %d engine jobs to pending (re-run mode)", updated)
-
+        # ── Skip completed: only include jobs already in "pending" status.
+        # Already-completed engine jobs are not re-processed;
+        # error/running jobs are left untouched so batch only picks up pending work.
         all_pending = get_pending_media_ids(session, engines)
         total = len(all_pending) if all_pending else 0
         # manual batch: only process 1 chunk per click
@@ -1153,6 +1173,11 @@ async def start_manual_batch():
         session.add(checkpoint)
         session.commit()
         batch_id = str(checkpoint.id)
+        # If no pending videos, mark as completed immediately so frontend doesn't get stuck
+        if total == 0:
+            checkpoint.status = "completed"
+            checkpoint.processed = 0
+            session.commit()
     finally:
         session.close()
 
@@ -1335,8 +1360,9 @@ async def get_batch_engine_progress(batch_id: str):
 
 
 @router.get("/pending-count")
-async def get_pending_asset_count():
-    """Return per-engine pending/success/error counts for AIPendingOverview."""
+async def get_pending_asset_count(engines: str = Query(None, description="Comma-separated engine names to scope pending count, e.g. scene,yolo")):
+    """Return per-engine pending/success/error counts for AIPendingOverview.
+    Optional ?engines=scene,yolo returns selected_pending (union-distinct)."""
     from app.database import sync_session_factory
     from app.core.job_helpers import get_pending_count_by_engine, get_success_error_count_by_engine, ENGINES
     from app.models.ai_engine_job import AIEngineJob
@@ -1367,6 +1393,22 @@ async def get_pending_asset_count():
             result[eng + "_success"] = cnt
             result[eng + "_error"] = err
             result[eng + "_done_count"] = cnt + err
+
+        # If engines param provided, calculate union-distinct pending count
+        if engines:
+            engine_list = [e.strip() for e in engines.split(",")]
+            engine_list = [e for e in engine_list if e in ENGINES]
+            if engine_list:
+                from sqlalchemy import text as _sql_text
+                sql_selected = _sql_text("""
+                    SELECT COUNT(DISTINCT media_id) FROM ai_engine_jobs
+                    WHERE engine_name = ANY(:engines) AND status = 'pending'
+                """)
+                selected_pending = session.execute(
+                    sql_selected, {"engines": engine_list}
+                ).scalar() or 0
+                result["selected_pending"] = selected_pending
+
         return result
     finally:
         session.close()
@@ -1395,17 +1437,24 @@ def start_event_scanner():
                         data = event.data or {}
                         media_ids = data.get("media_ids", [])
                         batch_id = data.get("batch_id") or str(event.batch_id or "")
-                        if media_ids:
-                            auto_config = get_auto_config()
+                        if not media_ids:
+                            continue
+                        auto_config = get_auto_config()
+                        if not auto_config.get("enabled", False):
                             logger.info(
-                                "Event scanner: dispatching chunk batch=%s media_ids=%d",
+                                "Event scanner: auto mode disabled, skipping chunk batch=%s media_ids=%d",
                                 batch_id, len(media_ids),
                             )
-                            threading.Thread(
-                                target=_orchestrate_batch,
-                                args=("auto", auto_config, None, media_ids),
-                                daemon=True,
-                            ).start()
+                            continue
+                        logger.info(
+                            "Event scanner: dispatching chunk batch=%s media_ids=%d",
+                            batch_id, len(media_ids),
+                        )
+                        threading.Thread(
+                            target=_orchestrate_batch,
+                            args=("auto", auto_config, None, media_ids),
+                            daemon=True,
+                        ).start()
                 finally:
                     session.close()
             except Exception:

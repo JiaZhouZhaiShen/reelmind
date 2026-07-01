@@ -59,7 +59,7 @@ export function PipelineConfigPanel() {
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<"idle" | "success" | "error">("idle")
   const [starting, setStarting] = useState(false)
-  const [startResult, setStartResult] = useState<{ status: string; batch_id?: string } | null>(null)
+  const [startResult, setStartResult] = useState<{ status: string; batch_id?: string; message?: string } | null>(null)
   const [pendingCount, setPendingCount] = useState<number | null>(null)
   const [checkpoints, setCheckpoints] = useState<BatchCheckpointInfo[]>([])
   const [engineProgress, setEngineProgress] = useState<Record<string, Record<string, number>>>({})
@@ -76,10 +76,10 @@ export function PipelineConfigPanel() {
   const ENGINE_ORDER = ["scene", "yolo", "ocr", "clip", "transcript", "diarization"]
 
 
-  const loadPendingCount = async () => {
+  const loadPendingCount = async (engines?: string[]) => {
     try {
-      const resp = await api.getPendingAssetCount()
-      setPendingCount(resp?.total_pending ?? null)
+      const resp = await api.getPendingAssetCount(engines)
+      setPendingCount(resp?.selected_pending ?? resp?.total_pending ?? null)
     } catch { }
   }
 
@@ -102,12 +102,28 @@ export function PipelineConfigPanel() {
       }
       if (!cancelled) setConfigs(results as ConfigMap)
       if (!cancelled) setLoading(false)
+      if (!cancelled) {
+        const manualCfg = results.manual || DEFAULTS.manual
+        loadPendingCount(manualCfg.engines)
+      }
     }
     load()
-    loadPendingCount()
     loadCheckpoints()
     return () => { cancelled = true }
   }, [])
+
+  const cfg = configs[activeTab] || DEFAULTS[activeTab]
+  const isAuto = activeTab === "auto"
+  const isSingle = activeTab === "single"
+  const engines = (cfg.engines || []) as string[]
+  const hasRunningBatch = checkpoints.some(cp => cp.status === "running")
+
+  // Re-fetch pending count when engines change (engine toggle or tab switch)
+  useEffect(() => {
+    if (!loading && activeTab !== "single") {
+      loadPendingCount(engines)
+    }
+  }, [engines, loading, activeTab])
 
   // Poll engine progress for running batches
   useEffect(() => {
@@ -129,11 +145,10 @@ export function PipelineConfigPanel() {
     if (!runningCp) return
     const interval = setInterval(() => {
       loadCheckpoints()
-      loadPendingCount()
+      loadPendingCount(engines)
     }, 5000)
     return () => clearInterval(interval)
   }, [checkpoints])
-  const cfg = configs[activeTab] || DEFAULTS[activeTab]
   const setCfg = (patch: Record<string, any>) => {
     setConfigs((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab], ...patch } }))
   }
@@ -169,17 +184,22 @@ export function PipelineConfigPanel() {
     setStartResult(null)
     try {
       const result = await api.startManualPipeline()
-      setStartResult({ status: result.status, batch_id: result.batch_id })
-      setTimeout(loadPendingCount, 1000)
-      setTimeout(loadCheckpoints, 1000)
+      setStartResult({ status: result.status, batch_id: result.batch_id, message: result.message })
+      if (result.status === "started") {
+        setTimeout(() => loadPendingCount(engines), 1000)
+        setTimeout(loadCheckpoints, 1000)
+      }
     } catch {
       setStartResult({ status: "error" })
-    } finally { setStarting(false) }
+    } finally {
+      setStarting(false)
+      // Always reload checkpoints after a start attempt (success or error),
+      // to pick up any status changes (e.g. stale running -> cancelled)
+      setTimeout(loadCheckpoints, 500)
+    }
   }
 
-  const isAuto = activeTab === "auto"
-  const isSingle = activeTab === "single"
-  const engines = (cfg.engines || []) as string[]
+
 
   return (
     <div className="bg-gray-900/30 rounded-lg border border-gray-800">
@@ -409,20 +429,20 @@ export function PipelineConfigPanel() {
                   </span>
                 )}
                 {startResult && startResult.status === "started" && (
-                  <span className="text-xs text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 已启动
+                    <span className="text-xs text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> 已启动
                     {startResult.batch_id && (
-                      <span className="font-mono text-emerald-500/70 ml-1">
+                        <span className="font-mono text-emerald-500/70 ml-1">
                         batch: {startResult.batch_id.slice(0, 8)}...
-                      </span>
-                    )}
-                  </span>
-                )}
-                {startResult && startResult.status !== "started" && startResult.status !== "started" && (
-                  <span className="text-xs text-red-400 flex items-center gap-1">
-                    <XCircle className="w-3.5 h-3.5" /> 启动失败
-                  </span>
-                )}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                {startResult && startResult.status !== "started" && (
+                    <span className="text-xs text-red-400 flex items-center gap-1">
+                      <XCircle className="w-3.5 h-3.5" /> {startResult.message || "启动失败"}
+                    </span>
+                  )}
               </div>
               <button
                 onClick={handleSave}
@@ -435,11 +455,12 @@ export function PipelineConfigPanel() {
               {!isAuto && !isSingle && (
                 <button
                   onClick={handleStart}
-                  disabled={starting}
+                  disabled={starting || hasRunningBatch}
+                  title={hasRunningBatch ? "已有批处理任务正在运行" : "启动手动批量处理"}
                   className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 transition-all"
                 >
                   {starting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                  {starting ? "启动中..." : "立即开始"}
+                  {starting ? "启动中..." : hasRunningBatch ? "已有任务运行中" : "立即开始"}
                 </button>
               )}
             </div>
