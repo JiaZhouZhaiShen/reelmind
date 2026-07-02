@@ -583,8 +583,40 @@ class IndexingService:
         start_time = dt_mod.datetime.now(dt_mod.timezone.utc)
 
         try:
-            # Step A ― file discovery (fast, no ffprobe)
-            discovered = self._discover_files(
+            # Step A.0: Quick skip if filesystem has not changed (scan cache)
+            current_root_mtime = None
+            try:
+                _root = Path(root_path)
+                if _root.exists():
+                    current_root_mtime = _root.stat().st_mtime_ns
+                if current_root_mtime is not None:
+                    from ..models.library import Library as _LibChk
+                    async with async_session_factory() as _chk_sess:
+                        _chk_lib = await _chk_sess.get(_LibChk, uuid.UUID(library_id))
+                        if _chk_lib and _chk_lib.settings:
+                            _chk_cache = _chk_lib.settings.get("scan_cache")
+                            if _chk_cache:
+                                _chk_mtime = _chk_cache.get("root_mtime_ns")
+                                _chk_count = _chk_cache.get("file_count")
+                                if (_chk_mtime == current_root_mtime
+                                        and _chk_count is not None
+                                        and _chk_lib.total_assets == _chk_count):
+                                    self._logger.info(
+                                        "Scan cache hit - filesystem unchanged for %s "
+                                        "(assets=%d, mtime match)",
+                                        root_path, _chk_lib.total_assets)
+                                    status["stage"] = "completed"
+                                    status["done"] = 0
+                                    status["total"] = 0
+                                    status["elapsed"] = 0.0
+                                    await self._publish_progress(scan_id, status)
+                                    self._cleanup(scan_id)
+                                    self._update_job_status(job_id, "completed", progress=100.0)
+                                    return
+            except Exception as _cache_e:
+                self._logger.warning("Scan cache check failed (fallback to full scan): %s", _cache_e)
+            discovered = await asyncio.to_thread(
+                self._discover_files,
                 root_path,
                 custom_extensions,
                 excluded_extensions,
@@ -596,6 +628,75 @@ class IndexingService:
                 self._cleanup(scan_id)
                 self._update_job_status(job_id, "cancelled")
                 return
+
+            # -- Inline cache update helper --
+            async def _update_scan_cache(_lib_id: str, _root: Path) -> None:
+                'Store current root mtime + asset count into Library.settings.'
+                try:
+                    if _root.exists():
+                        _mtime = _root.stat().st_mtime_ns
+                        from ..models.library import Library as _LMod
+                        from sqlalchemy import select as _Sel, func as _Func
+                        from ..models.asset import Asset as _AMod
+                        async with async_session_factory() as _uc_sess:
+                            _uc_lib = await _uc_sess.get(_LMod, uuid.UUID(_lib_id))
+                            if _uc_lib:
+                                _uc_cnt = await _uc_sess.scalar(
+                                    _Sel(_Func.count(_AMod.id)).where(
+                                        _AMod.library_id == uuid.UUID(_lib_id)
+                                    )
+                                ) or 0
+                                _uc_stg = dict(_uc_lib.settings or {})
+                                _uc_stg["scan_cache"] = {
+                                    "root_mtime_ns": _mtime,
+                                    "file_count": _uc_cnt,
+                                    "cached_at": dt_mod.datetime.now(
+                                        dt_mod.timezone.utc
+                                    ).isoformat(),
+                                }
+                                _uc_lib.settings = _uc_stg
+                                await _uc_sess.commit()
+                                self._logger.info(
+                                    "Scan cache saved: %d assets, mtime=%s", _uc_cnt, _mtime)
+                except Exception as _uce:
+                    self._logger.warning("Failed to update scan cache: %s", _uce)
+
+            # Step A.5: Incremental filter + Step A.6: Check-out (remove deleted files)
+            try:
+                from sqlalchemy import select as _sel
+                from ..models.asset import Asset as _AssetModel
+                async with async_session_factory() as _sess:
+                    _rows = await _sess.execute(
+                        _sel(_AssetModel.original_path).where(
+                            _AssetModel.library_id == uuid.UUID(library_id)
+                        )
+                    )
+                    _existing = {_row[0] for _row in _rows}
+                    if _existing:
+                        _before = len(discovered)
+                        _on_disk = {f["path"] for f in discovered}
+                        discovered = [f for f in discovered if f["path"] not in _existing]
+                        self._logger.info(
+                            "Incremental scan: %d existing skipped, %d new",
+                            _before - len(discovered), len(discovered),
+                        )
+
+                        # Step A.6: Check-out — files in DB but no longer on disk
+                        _gone = _existing - _on_disk
+                        if _gone:
+                            from sqlalchemy import delete as _sql_del
+                            _del_result = await _sess.execute(
+                                _sql_del(_AssetModel).where(
+                                    _AssetModel.library_id == uuid.UUID(library_id),
+                                    _AssetModel.original_path.in_(_gone),
+                                )
+                            )
+                            await _sess.commit()
+                            self._logger.info(
+                                "Check-out: %d assets removed (files disappeared from disk)",
+                                _del_result.rowcount)
+            except Exception as e:
+                self._logger.warning("Incremental / check-out fallback (full scan): %s", e)
 
             total = len(discovered)
             status["total"] = total
@@ -610,6 +711,7 @@ class IndexingService:
                 await self._publish_progress(scan_id, status)
                 self._cleanup(scan_id)
                 self._update_job_status(job_id, "completed", progress=100.0)
+                await _update_scan_cache(library_id, Path(root_path))
                 return
 
             # Step B ― metadata probing with Semaphore control
@@ -664,6 +766,12 @@ class IndexingService:
                 "completed" if not cancel.is_set() else "cancelled",
                 progress=100.0 if not cancel.is_set() else status["done"] / max(status["total"], 1) * 100,
             )
+
+            # Update scan cache after successful full scan
+            if not cancel.is_set():
+                await _update_scan_cache(library_id, Path(root_path))
+                self._logger.info(
+                    "Scan completed (cache updated) - %s", root_path)
 
         except Exception as e:
             self._logger.exception("Scan %s failed: %s", scan_id, e)
@@ -870,8 +978,8 @@ class IndexingService:
                         "has_audio": meta.get("has_audio", False),
                         "media_date": media_date,
                         "mime_type": meta.get("mime_type", "video/mp4"),
-                        "exif": _extract_exif(meta),
-                        "custom_metadata": _extract_custom_metadata(meta),
+                        "exif": _extract_exif(meta) or None,
+                        "custom_metadata": _extract_custom_metadata(meta) or None,
                     }
                     result = await session.execute(stmt, params)
                     row = result.fetchone()

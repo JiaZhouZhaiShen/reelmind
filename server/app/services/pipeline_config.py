@@ -24,7 +24,6 @@ _DEFAULT_MANUAL = {
     "filters": {
         "max_file_size_mb": 2000,
         "max_duration_minutes": 30,
-        "skip_rendered_files": True,
     },
 }
 
@@ -39,7 +38,6 @@ _DEFAULT_AUTO = {
     "filters": {
         "max_file_size_mb": 10000,
         "max_duration_minutes": 60,
-        "skip_rendered_files": True,
     },
 }
 
@@ -50,7 +48,6 @@ _DEFAULT_SINGLE = {
     "filters": {
         "max_file_size_mb": 0,
         "max_duration_minutes": 0,
-        "skip_rendered_files": False,
     },
 }
 

@@ -153,3 +153,7 @@ web/vite-out.txt
 *dev-server.err
 yolov8n.pt
 migration_*.sql
+
+# Backup files
+backups/
+archive/

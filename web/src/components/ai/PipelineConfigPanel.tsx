@@ -23,18 +23,18 @@ const DEFAULTS = {
   manual: {
     enabled: true, engines: ["scene", "yolo", "ocr", "clip", "transcript", "diarization"],
     batch_size: 100, timeout_minutes: 180,
-    filters: { max_file_size_mb: 2000, max_duration_minutes: 30, skip_rendered_files: true },
+    filters: { max_file_size_mb: 2000, max_duration_minutes: 30 },
   },
   auto: {
     enabled: false, engines: ["scene", "yolo", "ocr", "clip", "transcript", "diarization"],
     batch_size: 50, time_window_start: 0, time_window_end: 6,
     gpu_threshold_percent: 50, check_interval_seconds: 60,
-    filters: { max_file_size_mb: 10000, max_duration_minutes: 60, skip_rendered_files: true },
+    filters: { max_file_size_mb: 10000, max_duration_minutes: 60 },
   },
   single: {
     enabled: true, engines: ["scene", "yolo", "ocr", "clip", "transcript", "diarization"],
     timeout_minutes: 60,
-    filters: { max_file_size_mb: 0, max_duration_minutes: 0, skip_rendered_files: false },
+    filters: { max_file_size_mb: 0, max_duration_minutes: 0 },
   },
 } as const
 
@@ -64,6 +64,8 @@ export function PipelineConfigPanel() {
   const [checkpoints, setCheckpoints] = useState<BatchCheckpointInfo[]>([])
   const [engineProgress, setEngineProgress] = useState<Record<string, Record<string, number>>>({})
   const [chunkSize, setChunkSize] = useState(0)
+  const [resetting, setResetting] = useState(false)
+  const [resetMsg, setResetMsg] = useState<string | null>(null)
 
   const ENGINE_NAMES: Record<string, string> = {
     scene: "场景切割",
@@ -76,9 +78,9 @@ export function PipelineConfigPanel() {
   const ENGINE_ORDER = ["scene", "yolo", "ocr", "clip", "transcript", "diarization"]
 
 
-  const loadPendingCount = async (engines?: string[]) => {
+  const loadPendingCount = async (engines?: string[], max_file_size_mb?: number, max_duration_minutes?: number) => {
     try {
-      const resp = await api.getPendingAssetCount(engines)
+      const resp = await api.getPendingAssetCount(engines, max_file_size_mb, max_duration_minutes)
       setPendingCount(resp?.selected_pending ?? resp?.total_pending ?? null)
     } catch { }
   }
@@ -104,7 +106,7 @@ export function PipelineConfigPanel() {
       if (!cancelled) setLoading(false)
       if (!cancelled) {
         const manualCfg = results.manual || DEFAULTS.manual
-        loadPendingCount(manualCfg.engines)
+        loadPendingCount(manualCfg.engines, manualCfg.filters?.max_file_size_mb, manualCfg.filters?.max_duration_minutes)
       }
     }
     load()
@@ -121,7 +123,7 @@ export function PipelineConfigPanel() {
   // Re-fetch pending count when engines change (engine toggle or tab switch)
   useEffect(() => {
     if (!loading && activeTab !== "single") {
-      loadPendingCount(engines)
+      loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes)
     }
   }, [engines, loading, activeTab])
 
@@ -145,7 +147,7 @@ export function PipelineConfigPanel() {
     if (!runningCp) return
     const interval = setInterval(() => {
       loadCheckpoints()
-      loadPendingCount(engines)
+      loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes)
     }, 5000)
     return () => clearInterval(interval)
   }, [checkpoints])
@@ -162,6 +164,27 @@ export function PipelineConfigPanel() {
     }
   }
 
+  const handleResetErrors = async () => {
+    if (!window.confirm('确定要重置所有错误任务吗？此操作不可撤销。')) return;
+    setResetting(true)
+    setResetMsg(null)
+    try {
+      const result = await api.resetErrorJobs()
+      if (result.count > 0) {
+        setResetMsg(result.count.toString())
+        loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes)
+      } else {
+        setResetMsg('0')
+      }
+      setTimeout(() => setResetMsg(null), 3000)
+    } catch {
+      setResetMsg('error')
+      setTimeout(() => setResetMsg(null), 3000)
+    } finally {
+      setResetting(false)
+    }
+  }
+
   const setFilters = (patch: Record<string, any>) => {
     setCfg({ filters: { ...(cfg.filters || {}), ...patch } })
   }
@@ -173,6 +196,7 @@ export function PipelineConfigPanel() {
       await SAVE_MAP[activeTab](cfg)
       setSaveMsg("success")
       setTimeout(() => setSaveMsg("idle"), 2000)
+      if (activeTab !== "single") loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes)
     } catch {
       setSaveMsg("error")
       setTimeout(() => setSaveMsg("idle"), 3000)
@@ -186,7 +210,7 @@ export function PipelineConfigPanel() {
       const result = await api.startManualPipeline()
       setStartResult({ status: result.status, batch_id: result.batch_id, message: result.message })
       if (result.status === "started") {
-        setTimeout(() => loadPendingCount(engines), 1000)
+        setTimeout(() => loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes), 1000)
         setTimeout(loadCheckpoints, 1000)
       }
     } catch {
@@ -404,17 +428,8 @@ export function PipelineConfigPanel() {
                   />
                 </div>
               </div>
-              <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!cfg.filters?.skip_rendered_files}
-                  onChange={() => setFilters({ skip_rendered_files: !cfg.filters?.skip_rendered_files })}
-                  className="rounded border-gray-600 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-xs text-gray-400">跳过 Premiere Pro 渲染文件 (Rendered - *.mov)</span>
-              </label>
-            </div>
 
+            </div>
             {/* Action Buttons */}
             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
               <div className="flex-1 min-w-0">
@@ -464,6 +479,19 @@ export function PipelineConfigPanel() {
                 </button>
               )}
             </div>
+
+            {/* 重置错误 - 危险操作 */}
+            <div className="mt-2 pt-2 border-t border-gray-800/40 flex justify-end">
+              <button
+                onClick={handleResetErrors}
+                disabled={resetting}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
+              >
+                {resetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <AlertTriangle className="w-3 h-3" />}
+                {resetting ? "重置中..." : "重置错误"}
+              </button>
+            </div>
+
           </>
         )}
 
@@ -653,6 +681,7 @@ function BatchProgressSection({
 
       </div>
     </div>
+
   )
 }
 

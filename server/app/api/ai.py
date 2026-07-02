@@ -438,7 +438,7 @@ async def ai_progress_sse(video_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
- 
+
 @router.get("/stats")
 async def get_ai_stats():
      """Get aggregated AI processing statistics from the AI database."""
@@ -474,7 +474,7 @@ async def get_ai_stats():
              "total_frames": 0,
              "speakers_found": 0,
          }
- 
+
 
 @router.get("/processed-assets")
 async def get_processed_assets(page: int = Query(1, ge=1), page_size: int = Query(10000, ge=1, le=10000)):
@@ -508,7 +508,7 @@ async def get_processed_assets(page: int = Query(1, ge=1), page_size: int = Quer
         count_stmt = sa_select(sa_func.count(Asset.id)).where(Asset.id.in_(video_ids)).where(Asset.is_archived == False)
         total_result = await session.execute(count_stmt)
         total = total_result.scalar() or 0
-        
+
         # Fetch page
         stmt = (
             sa_select(Asset)
@@ -521,7 +521,7 @@ async def get_processed_assets(page: int = Query(1, ge=1), page_size: int = Quer
         )
         result = await session.execute(stmt)
         assets = result.unique().scalars().all()
-    
+
     # Convert to response format
     items = []
     for a in assets:
@@ -557,7 +557,7 @@ async def get_processed_assets(page: int = Query(1, ge=1), page_size: int = Quer
             "exif": a.exif,
             "custom_metadata": a.custom_metadata,
         })
-    
+
     return {"items": items, "total": total}
 
 
@@ -948,7 +948,9 @@ def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = Non
         if media_ids is not None:
             all_pending = media_ids
         else:
-            all_pending = get_pending_media_ids(session, engines)
+            _max_fs = filters.get("max_file_size_mb", 0)
+            _max_dur = filters.get("max_duration_minutes", 0)
+            all_pending = get_pending_media_ids(session, engines, _max_fs, _max_dur)
         if not all_pending:
             logger.info("_orchestrate_batch[%s]: no pending videos", task_label)
             if batch_id:
@@ -1157,7 +1159,9 @@ async def start_manual_batch():
         # ── Skip completed: only include jobs already in "pending" status.
         # Already-completed engine jobs are not re-processed;
         # error/running jobs are left untouched so batch only picks up pending work.
-        all_pending = get_pending_media_ids(session, engines)
+        _fs = config.get("filters", {}).get("max_file_size_mb", 0)
+        _dur = config.get("filters", {}).get("max_duration_minutes", 0)
+        all_pending = get_pending_media_ids(session, engines, _fs, _dur)
         total = len(all_pending) if all_pending else 0
         # manual batch: only process 1 chunk per click
         config["max_chunks"] = 1
@@ -1360,28 +1364,57 @@ async def get_batch_engine_progress(batch_id: str):
 
 
 @router.get("/pending-count")
-async def get_pending_asset_count(engines: str = Query(None, description="Comma-separated engine names to scope pending count, e.g. scene,yolo")):
+async def get_pending_asset_count(
+    engines: str = Query(None, description="Comma-separated engine names to scope pending count, e.g. scene,yolo"),
+    max_file_size_mb: int = Query(0, description="Max file size in MB to include (0 = no limit)"),
+    max_duration_minutes: int = Query(0, description="Max duration in minutes to include (0 = no limit)"),
+):
     """Return per-engine pending/success/error counts for AIPendingOverview.
-    Optional ?engines=scene,yolo returns selected_pending (union-distinct)."""
+    Optional ?engines=scene,yolo returns selected_pending (union-distinct).
+    When max_file_size_mb > 0, assets with file_size = 0, NULL, or exceeding the limit are excluded.
+    When max_duration_minutes > 0, assets with duration = 0, NULL, or exceeding the limit are excluded.
+    """
     from app.database import sync_session_factory
     from app.core.job_helpers import get_pending_count_by_engine, get_success_error_count_by_engine, ENGINES
     from app.models.ai_engine_job import AIEngineJob
-    from sqlalchemy import text
+    from app.models.asset import Asset
+    from sqlalchemy import text, and_
 
     session = sync_session_factory()
     try:
-        total_assets = session.query(AIEngineJob.media_id).distinct().count()
+        max_bytes = max_file_size_mb * 1024 * 1024 if max_file_size_mb > 0 else 0
+        max_duration_seconds = max_duration_minutes * 60 if max_duration_minutes > 0 else 0
 
+        # total_assets with file size + duration + rendered filters
+        q = session.query(AIEngineJob.media_id).join(
+            Asset, AIEngineJob.media_id == Asset.id
+        ).filter(
+            and_(Asset.file_size.isnot(None), Asset.file_size > 0),
+        )
+        if max_file_size_mb > 0:
+            q = q.filter(Asset.file_size <= max_bytes)
+        if max_duration_minutes > 0:
+            q = q.filter(and_(Asset.duration.isnot(None), Asset.duration > 0, Asset.duration <= max_duration_seconds))
+        total_assets = q.distinct().count()
+
+        # total_pending with file size + duration + rendered filters
         sql = text("""
             SELECT COUNT(*) FROM (
-                SELECT media_id FROM ai_engine_jobs
-                GROUP BY media_id
+                SELECT aje.media_id FROM ai_engine_jobs aje
+                JOIN assets a ON a.id = aje.media_id
+                WHERE a.file_size > 0
+                  AND (:max_bytes = 0 OR a.file_size <= :max_bytes)
+                  AND (:max_duration = 0 OR (a.duration > 0 AND a.duration <= :max_duration))
+                GROUP BY aje.media_id
                 HAVING COUNT(CASE WHEN status != 'pending' THEN 1 END) = 0
             ) sub
         """)
-        total_pending = session.execute(sql).scalar() or 0
+        total_pending = session.execute(sql, {
+            "max_bytes": max_bytes,
+            "max_duration": max_duration_seconds,
+        }).scalar() or 0
 
-        pending_by_engine = get_pending_count_by_engine(session)
+        pending_by_engine = get_pending_count_by_engine(session, max_file_size_mb, max_duration_minutes)
         success_error = get_success_error_count_by_engine(session)
 
         result = {"total_assets": total_assets, "total_pending": total_pending}
@@ -1401,11 +1434,20 @@ async def get_pending_asset_count(engines: str = Query(None, description="Comma-
             if engine_list:
                 from sqlalchemy import text as _sql_text
                 sql_selected = _sql_text("""
-                    SELECT COUNT(DISTINCT media_id) FROM ai_engine_jobs
-                    WHERE engine_name = ANY(:engines) AND status = 'pending'
+                    SELECT COUNT(DISTINCT aje.media_id) FROM ai_engine_jobs aje
+                    JOIN assets a ON a.id = aje.media_id
+                    WHERE aje.engine_name = ANY(:engines)
+                      AND aje.status = 'pending'
+                      AND a.file_size > 0
+                      AND (:max_bytes = 0 OR a.file_size <= :max_bytes)
+                      AND (:max_duration = 0 OR (a.duration > 0 AND a.duration <= :max_duration))
                 """)
                 selected_pending = session.execute(
-                    sql_selected, {"engines": engine_list}
+                    sql_selected, {
+                        "engines": engine_list,
+                        "max_bytes": max_bytes,
+                        "max_duration": max_duration_seconds,
+                    }
                 ).scalar() or 0
                 result["selected_pending"] = selected_pending
 
@@ -1467,3 +1509,35 @@ def start_event_scanner():
 
 # Start the event scanner on module load so auto-dispatch works
 start_event_scanner()
+@router.post("/pipeline/jobs/reset-errors")
+async def reset_error_jobs():
+    """Reset all AI engine jobs with status='error' back to 'pending'.
+
+    This allows previously failed/oversized/skipped files to be re-processed.
+    """
+    from app.database import sync_session_factory
+    from app.models.ai_engine_job import AIEngineJob
+    from sqlalchemy import update
+
+    session = sync_session_factory()
+    try:
+        error_count = session.query(AIEngineJob).filter(AIEngineJob.status == "error").count()
+        if error_count == 0:
+            return {"count": 0}
+        stmt = (
+            update(AIEngineJob)
+            .where(AIEngineJob.status == "error")
+            .values(
+                status="pending",
+                retry_count=0,
+                started_at=None,
+                completed_at=None,
+                error_message=None,
+            )
+        )
+        session.execute(stmt)
+        session.commit()
+        logger.info("reset_error_jobs: reset %d error jobs to pending", error_count)
+        return {"count": error_count}
+    finally:
+        session.close()

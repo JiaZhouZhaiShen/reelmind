@@ -77,6 +77,20 @@ def _set_job_status(media_id, engine, status):
     except Exception as e:
         logger.warning("Failed to set %s job status for %s: %s", engine, media_id, e)
 
+def _timeout_run(func, *args, timeout_seconds=300):
+    """Run func(*args) with a timeout. Raises TimeoutError on timeout.
+
+    Creates a fresh ThreadPoolExecutor per call (acceptable because calls
+    are long-running seconds-level operations).
+    """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTE
+    with ThreadPoolExecutor(max_workers=1) as _ex:
+        _f = _ex.submit(func, *args)
+        try:
+            return _f.result(timeout=timeout_seconds)
+        except _FutTE:
+            raise TimeoutError(f"timed out after {timeout_seconds}s")
+
 def get_pipeline_steps() -> dict:
     """Return full config as dict (backward-compatible with /config API)."""
     from configs import to_dict_all
@@ -429,6 +443,7 @@ def process_batch(
 
     total = len(pending_assets)
     step_results = {"completed": 0, "failed": 0, "skipped": 0}
+    failed_video_ids: set[str] = set()
 
     # Filter out assets whose video files no longer exist on disk
     existing_assets = []
@@ -448,61 +463,6 @@ def process_batch(
     pending_assets = existing_assets
     total = len(pending_assets)
 
-    # Apply file filtering rules (Rule 15: filtering on AI side)
-    _filters = filters or {}
-    _max_size = _filters.get("max_file_size_mb", 0)
-    _max_duration = _filters.get("max_duration_minutes", 0)
-    _skip_rendered = _filters.get("skip_rendered_files", False)
-    _ALL_ENGINES = ("scene", "yolo", "ocr", "clip", "transcript", "diarization")
-
-    if _max_size > 0 or _skip_rendered or _max_duration > 0:
-        _filtered = []
-        for _asset in pending_assets:
-            _skip = False
-            _fname = _Path(_asset.original_path).name
-
-            # File size check
-            if _max_size > 0:
-                _size_mb = os.path.getsize(str(_asset.original_path)) / (1024 * 1024)
-                if _size_mb > _max_size:
-                    logger.info("Filtered %s: size %.0fMB > %dMB limit", _fname, _size_mb, _max_size)
-                    _skip = True
-
-            # Skip Premiere Pro rendered files
-            if not _skip and _skip_rendered and _fname.startswith("Rendered - ") and _fname.lower().endswith(".mov"):
-                logger.info("Filtered %s: Premiere Pro rendered file", _fname)
-                _skip = True
-
-            # Duration check
-            if not _skip and _max_duration > 0:
-                try:
-                    import subprocess
-                    _result = subprocess.run(
-                        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                         "-of", "default=noprint_wrappers=1:nokey=1", str(_asset.original_path)],
-                        capture_output=True, text=True, timeout=30)
-                    if _result.returncode == 0 and _result.stdout.strip():
-                        _dur = float(_result.stdout.strip())
-                        if _dur > _max_duration * 60:
-                            logger.info("Filtered %s: duration %.0fs > %dmin limit", _fname, _dur, _max_duration)
-                            _skip = True
-                except Exception:
-                    pass
-
-            if _skip:
-                for _eng in _ALL_ENGINES:
-                    _set_job_status(str(_asset.id), _eng, "error")
-                step_results["skipped"] += 1
-                step_results["failed"] += 1
-            else:
-                _filtered.append(_asset)
-
-        _skipped_count = len(pending_assets) - len(_filtered)
-        if _skipped_count:
-            logger.warning("Batch filtered %d assets by config rules", _skipped_count)
-        pending_assets = _filtered
-
-    total = len(pending_assets)
 
     def _cb(msg: str, pct: float):
         logger.info("[batch] %.0f%% %s", pct, msg)
@@ -559,17 +519,24 @@ def process_batch(
                     break
                 try:
                     vp = str(asset.original_path)
-                    cap = _cv2.VideoCapture(vp)
-                    dur, fps = 0, cap.get(_cv2.CAP_PROP_FPS)
-                    tf = int(cap.get(_cv2.CAP_PROP_FRAME_COUNT))
-                    if fps > 0: dur = tf / fps
-                    w, h = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
-                    cap.release()
+                    # Wrap OpenCV video metadata reading with timeout (30s)
+                    def _read_video_meta(vp: str):
+                        cap = _cv2.VideoCapture(vp)
+                        try:
+                            fps = cap.get(_cv2.CAP_PROP_FPS)
+                            tf = int(cap.get(_cv2.CAP_PROP_FRAME_COUNT))
+                            dur = tf / fps if fps > 0 else 0
+                            w = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
+                            return dur, fps, tf, w, h
+                        finally:
+                            cap.release()
+                    dur, fps, tf, w, h = _timeout_run(_read_video_meta, vp, timeout_seconds=300)
                     video = _AIVideo(id=str(asset.id), file_path=vp, file_name=asset.file_name or _Path(vp).name,
                         duration=float(dur or 0), width=w, height=h, fps=float(fps or 0))
                     ai_s.add(video)
                     ai_s.flush()
-                    scenes_data = json.loads(subprocess.run([sys.executable, '/app/services/scene_worker.py', vp], capture_output=True, text=True, timeout=300, cwd='/app').stdout)
+                    scenes_data = json.loads(subprocess.run([sys.executable, '/app/services/scene_worker.py', vp], capture_output=True, text=True, timeout=600, cwd='/app').stdout)
                     thumb_dir = thumb_base / str(asset.id)
                     thumb_dir.mkdir(parents=True, exist_ok=True)
                     for sc in scenes_data:
@@ -585,6 +552,8 @@ def process_batch(
                     _cb(f"[{asset.file_name}] TransNetV2 [{idx+1}/{len(need)}]", (idx + 1) / len(need) * 100)
                 except Exception as e:
                     step_results["failed"] += 1
+                    _set_job_status(str(asset.id), "scene", "error")
+                    failed_video_ids.add(str(asset.id))
                     logger.exception("TransNetV2 failed for %s", asset.file_name)
                     try:
                         ai_s.rollback()
@@ -596,10 +565,26 @@ def process_batch(
                 _unload_transnet()
             if "transnet" not in _pre_loaded_models: _update_model_state("transnet", False)
         _cb("Step 1/5: TransNetV2 done", 20)
-        for _a_sc in pending_assets:
-            _set_job_status(str(_a_sc.id), "scene", "completed")
     else:
         _cb("Step 1/5: TransNetV2 skipped", 20)
+
+    # Cascade scene failures to downstream engines (Scene → YOLO/OCR/CLIP)
+    if failed_video_ids:
+        _scene_downstream = []
+        if (engines is None or "yolo" in engines) and yolo_cfg.enabled:
+            _scene_downstream.append("yolo")
+        if (engines is None or "ocr" in engines) and ocr_cfg.enabled:
+            _scene_downstream.append("ocr")
+        if (engines is None or "clip" in engines) and clip_cfg.enabled:
+            _scene_downstream.append("clip")
+        if _scene_downstream:
+            for _vid in failed_video_ids:
+                for _eng in _scene_downstream:
+                    _set_job_status(_vid, _eng, "error")
+            logger.info(
+                "Cascade: scene failure → %s error for %d videos",
+                _scene_downstream, len(failed_video_ids),
+            )
 
     # Build set of batch video IDs to scope YOLO/OCR/CLIP queries
     _batch_video_ids = set(str(a.id) for a in pending_assets)
@@ -617,6 +602,7 @@ def process_batch(
         scenes_no_tag = ai_s.query(_Scene).outerjoin(_SceneTag, _Scene.id == _SceneTag.scene_id).filter(_SceneTag.id.is_(None), _Scene.video_id.in_(_batch_video_ids)).all()
         ai_s.close()
         _cb(f"Step 2/5: YOLO — {len(scenes_no_tag)} scenes to process", 20)
+        _yolo_failed_videos: set[str] = set()
         if scenes_no_tag:
             from services.yolo_service import _load_yolo, _unload_yolo
             _load_yolo()
@@ -627,10 +613,15 @@ def process_batch(
                     if cancel_event and cancel_event.is_set():
                         _cb('Cancelled during YOLO step', 20)
                         break
+                    if scene.video_id in _yolo_failed_videos:
+                        continue
                     try:
                         video = ai_s.query(_AIVideo).filter(_AIVideo.id == scene.video_id).first()
                         if not video: continue
-                        objects = _detect_objects(video.file_path, scene.start_time, scene.end_time)
+                        objects = _timeout_run(
+                            _detect_objects, video.file_path, scene.start_time, scene.end_time,
+                            timeout_seconds=30,
+                        )
                         for obj in objects:
                             ai_s.add(_SceneTag(scene_id=scene.id, label=obj["label"],
                                 confidence=obj["confidence"], count=obj["count"]))
@@ -642,15 +633,24 @@ def process_batch(
                             ai_s.rollback()
                         except Exception:
                             pass
-                        logger.error("YOLO failed for scene %s: %s", scene.id, e)
+                        _yolo_failed_videos.add(scene.video_id)
+                        _set_job_status(str(scene.video_id), "yolo", "error")
+                        failed_video_ids.add(str(scene.video_id))
+                        if isinstance(e, TimeoutError):
+                            logger.warning(
+                                "YOLO timeout for scene %s (video %s), skip remaining scenes",
+                                scene.id, scene.video_id,
+                            )
+                        else:
+                            logger.error("YOLO failed for scene %s: %s", scene.id, e)
                 ai_s.close()
             finally:
                 if "yolo" not in _pre_loaded_models:
                     _unload_yolo()
                 if "yolo" not in _pre_loaded_models: _update_model_state("yolo", False)
         _cb("Step 2/5: YOLO done", 40)
-        for _a in pending_assets:
-            _set_job_status(str(_a.id), "yolo", "completed")
+        if _yolo_failed_videos:
+            logger.info("YOLO: %d videos failed, marked error", len(_yolo_failed_videos))
 
     else:
         _cb("Step 2/5: YOLO skipped", 40)
@@ -668,6 +668,7 @@ def process_batch(
         scenes_no_ocr = ai_s.query(_Scene).outerjoin(_SceneOCR, _Scene.id == _SceneOCR.scene_id).filter(_SceneOCR.id.is_(None), _Scene.video_id.in_(_batch_video_ids)).all()
         ai_s.close()
         _cb(f"Step 3/5: OCR — {len(scenes_no_ocr)} scenes to process", 40)
+        _ocr_failed_videos: set[str] = set()
         if scenes_no_ocr:
             from services.ocr_service import _load_ocr, _unload_ocr
             _load_ocr()
@@ -678,11 +679,16 @@ def process_batch(
                     if cancel_event and cancel_event.is_set():
                         _cb('Cancelled during OCR step', 40)
                         break
+                    if scene.video_id in _ocr_failed_videos:
+                        continue
                     try:
                         video = ai_s.query(_AIVideo).filter(_AIVideo.id == scene.video_id).first()
                         if not video: continue
                         mid_time = (scene.start_time + scene.end_time) / 2
-                        ocr_results = _ocr_scene(video.file_path, mid_time)
+                        ocr_results = _timeout_run(
+                            _ocr_scene, video.file_path, mid_time,
+                            timeout_seconds=30,
+                        )
                         for oi in ocr_results:
                             ai_s.add(_SceneOCR(scene_id=scene.id, text=oi["text"], confidence=oi["confidence"],
                                 bbox_x=oi["bbox"]["x"], bbox_y=oi["bbox"]["y"],
@@ -695,19 +701,29 @@ def process_batch(
                             ai_s.rollback()
                         except Exception:
                             pass
-                        logger.error("OCR failed for scene %s: %s", scene.id, e)
+                        _ocr_failed_videos.add(scene.video_id)
+                        _set_job_status(str(scene.video_id), "ocr", "error")
+                        failed_video_ids.add(str(scene.video_id))
+                        if isinstance(e, TimeoutError):
+                            logger.warning(
+                                "OCR timeout for scene %s (video %s), skip remaining scenes",
+                                scene.id, scene.video_id,
+                            )
+                        else:
+                            logger.error("OCR failed for scene %s: %s", scene.id, e)
                 ai_s.close()
             finally:
                 if "ocr" not in _pre_loaded_models:
                     _unload_ocr()
                 if "ocr" not in _pre_loaded_models: _update_model_state("ocr", False)
         _cb("Step 3/5: OCR done", 60)
-        for _a in pending_assets:
-            _set_job_status(str(_a.id), "ocr", "completed")
+        if _ocr_failed_videos:
+            logger.info("OCR: %d videos failed, marked error", len(_ocr_failed_videos))
 
     else:
         _cb("Step 3/5: OCR skipped", 60)
 
+    # ══════════════════════════════════════════
     # ══════════════════════════════════════════
     # STEP 4: CLIP
     # ══════════════════════════════════════════
@@ -725,38 +741,56 @@ def process_batch(
             from services.clip_service import _load_clip, _unload_clip
             _load_clip()
             _update_model_state("clip", True)
+            _clip_failed_videos: set[str] = set()
             try:
                 vid_scenes: dict = {}
                 for sc in scenes_no_frame: vid_scenes.setdefault(sc.video_id, []).append(sc)
                 for vdx, (vid, sc_list) in enumerate(vid_scenes.items()):
                     if cancel_event and cancel_event.is_set():
-                        _cb('Cancelled during CLIP step', 60)
+                        _cb("Cancelled during CLIP step", 60)
                         break
-                    try:
-                        ai_s = get_ai_session()
-                        video = ai_s.query(_AIVideo).filter(_AIVideo.id == vid).first()
-                        if not video: ai_s.close(); continue
-                        ai_s.close()
-                        mid_times = [(sc.start_time + sc.end_time) / 2 for sc in sc_list]
-                        embs = _encode_frames(video.file_path, mid_times)
-                        ai_s = get_ai_session()
-                        for scene, emb in zip(sc_list, embs):
-                            ai_s.add(_Frame(video_id=vid, scene_id=scene.id,
-                                time_sec=emb["time_sec"], embedding=emb["embedding"]))
-                        ai_s.commit(); ai_s.close()
-                        _cb(f"CLIP [{vdx+1}/{len(vid_scenes)}] {len(sc_list)} scenes",
-                            60 + (vdx + 1) / len(vid_scenes) * 20)
-                    except Exception as e:
+                    ai_s = get_ai_session()
+                    video = ai_s.query(_AIVideo).filter(_AIVideo.id == vid).first()
+                    ai_s.close()
+                    if not video:
+                        continue
+                    for sdx, scene in enumerate(sc_list):
+                        if cancel_event and cancel_event.is_set():
+                            break
+                        if vid in _clip_failed_videos:
+                            break
                         try:
-                            ai_s.rollback()
-                            ai_s.close()
-                        except Exception:
-                            pass
-                        logger.error("CLIP failed for video %s: %s", vid, e)
+                            mid_time = (scene.start_time + scene.end_time) / 2
+                            embs = _timeout_run(
+                                _encode_frames, video.file_path, [mid_time],
+                                timeout_seconds=30,
+                            )
+                            ai_s = get_ai_session()
+                            if embs:
+                                ai_s.add(_Frame(video_id=vid, scene_id=scene.id,
+                                    time_sec=embs[0]["time_sec"], embedding=embs[0]["embedding"]))
+                            ai_s.commit(); ai_s.close()
+                            _cb(f"CLIP [{vdx+1}/{len(vid_scenes)}] video {vid} scene {sdx+1}/{len(sc_list)}",
+                                60 + (vdx + 1) / len(vid_scenes) * 20)
+                        except Exception as e:
+                            try:
+                                ai_s.rollback()
+                                ai_s.close()
+                            except Exception:
+                                pass
+                            _clip_failed_videos.add(vid)
+                            _set_job_status(str(vid), "clip", "error")
+                            failed_video_ids.add(str(vid))
+                            if isinstance(e, TimeoutError):
+                                logger.warning(
+                                    "CLIP timeout for scene %s (video %s), skip remaining scenes",
+                                    scene.id, vid,
+                                )
+                            else:
+                                logger.error("CLIP failed for scene %s (video %s): %s", scene.id, vid, e)
                 _cb("Step 4/5: CLIP done", 80)
-                for _a in pending_assets:
-                    _set_job_status(str(_a.id), "clip", "completed")
-
+                if _clip_failed_videos:
+                    logger.info("CLIP: %d videos failed, marked error", len(_clip_failed_videos))
             finally:
                 if "clip" not in _pre_loaded_models:
                     _unload_clip()
@@ -805,6 +839,10 @@ def process_batch(
                             80 + (idx + 1) / len(need_whisper) * 20)
                     except Exception as e:
                         step_results["failed"] += 1
+                        _set_job_status(str(asset.id), "transcript", "error")
+                        if (engines is None or "diarization" in engines) and diarization_cfg.enabled:
+                            _set_job_status(str(asset.id), "diarization", "error")
+                        failed_video_ids.add(str(asset.id))
                         logger.exception("Whisper failed for %s", asset.file_name)
             finally:
                 if "whisper" not in _pre_loaded_models:
@@ -841,7 +879,7 @@ def process_batch(
     if "diarization" not in _pre_loaded_models: _update_model_state("diarization", False)
 
     # Final: compute actual completed count (total minus confirmed failures minus skipped)
-    step_results["completed"] = len(pending_assets) - step_results["failed"] - step_results["skipped"]
+    step_results["completed"] = len(pending_assets) - len(failed_video_ids) - step_results["skipped"]
     if step_results["completed"] < 0:
         step_results["completed"] = 0
     _cb("Batch pipeline complete!", 100)

@@ -74,7 +74,6 @@ export interface ManualPipelineConfig {
   filters: {
     max_file_size_mb: number
     max_duration_minutes: number
-    skip_rendered_files: boolean
   }
 }
 
@@ -89,7 +88,6 @@ export interface AutoPipelineConfig {
   filters: {
     max_file_size_mb: number
     max_duration_minutes: number
-    skip_rendered_files: boolean
   }
 }
 
@@ -100,7 +98,6 @@ export interface SinglePipelineConfig {
   filters: {
     max_file_size_mb: number
     max_duration_minutes: number
-    skip_rendered_files: boolean
   }
 }
 

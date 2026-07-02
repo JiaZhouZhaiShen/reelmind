@@ -24,7 +24,6 @@ ENGINE_DEPENDS = {
     "diarization": ["transcript"],
 }
 
-
 def insert_jobs_for_asset(session: Session, media_id: uuid.UUID | str):
     """Ensure 6 job rows exist for a given media asset."""
     mid = str(media_id)
@@ -34,7 +33,6 @@ def insert_jobs_for_asset(session: Session, media_id: uuid.UUID | str):
         if eng not in existing:
             session.add(AIEngineJob(media_id=mid, engine_name=eng, status="pending", depends_on=list(ENGINE_DEPENDS.get(eng, []))))
     session.commit()
-
 
 def set_job_status(
     session: Session,
@@ -70,16 +68,13 @@ def set_job_status(
         job.error_message = error_message
     session.commit()
 
-
 def set_job_success(session: Session, media_id: uuid.UUID | str, engine_name: str):
     """Convenience: mark a job as completed."""
     set_job_status(session, media_id, engine_name, "completed")
 
-
 def set_job_error(session: Session, media_id: uuid.UUID | str, engine_name: str, error_message: str | None = None):
     """Convenience: mark a job as error."""
     set_job_status(session, media_id, engine_name, "error", error_message=error_message)
-
 
 def get_job_status(
     session: Session,
@@ -100,7 +95,6 @@ def get_job_status(
         return {e: {"status": "pending"} for e in ENGINES}
     return {j.engine_name: {"status": j.status, "depends_on": list(j.depends_on) if j.depends_on else []} for j in jobs}
 
-
 def reset_jobs_for_asset(session: Session, media_id: uuid.UUID | str):
     """Reset all 6 jobs to pending for a media asset."""
     from app.models.ai_engine_job import AIEngineJob
@@ -116,24 +110,38 @@ def reset_jobs_for_asset(session: Session, media_id: uuid.UUID | str):
     )
     session.commit()
 
+def get_pending_count_by_engine(session: Session, max_file_size_mb: int = 0, max_duration_minutes: int = 0) -> dict[str, int]:
+    """Return dict of engine_name -> count of pending jobs.
 
-def get_pending_count_by_engine(session: Session) -> dict[str, int]:
-    """Return dict of engine_name -> count of pending jobs."""
+    When `max_file_size_mb > 0`, only count jobs for assets whose file_size
+    is within the limit (JOIN assets table).  Assets with file_size = 0 or
+    NULL are always excluded.
+    When `max_duration_minutes > 0`, only count jobs for assets whose duration
+    is within the limit. Assets with duration = 0 or NULL are always excluded.
+    """
     from app.models.ai_engine_job import AIEngineJob
-    from sqlalchemy import func
-    rows = session.query(
+    from app.models.asset import Asset
+    from sqlalchemy import func, and_
+    q = session.query(
         AIEngineJob.engine_name,
         func.count(AIEngineJob.id),
+    ).join(
+        Asset, AIEngineJob.media_id == Asset.id
     ).filter(
-        AIEngineJob.status == "pending"
-    ).group_by(AIEngineJob.engine_name).all()
+        and_(Asset.file_size.isnot(None), Asset.file_size > 0),
+        AIEngineJob.status == "pending",
+    )
+    if max_file_size_mb > 0:
+        q = q.filter(Asset.file_size <= max_file_size_mb * 1024 * 1024)
+    if max_duration_minutes > 0:
+        q = q.filter(and_(Asset.duration.isnot(None), Asset.duration > 0, Asset.duration <= max_duration_minutes * 60))
+    rows = q.group_by(AIEngineJob.engine_name).all()
     result = {}
     for eng in ENGINES:
         result[eng] = 0
     for eng, cnt in rows:
         result[eng] = cnt
     return result
-
 
 def get_success_error_count_by_engine(session: Session) -> dict[str, dict[str, int]]:
     """Return dict of engine_name -> {success, error} counts."""
@@ -156,7 +164,6 @@ def get_success_error_count_by_engine(session: Session) -> dict[str, dict[str, i
             result[eng]["error"] = cnt
     return result
 
-
 def get_jobs_by_ids(session: Session, media_ids: list[str]) -> dict[str, dict[str, str]]:
     """Batch fetch all jobs for a list of media IDs.
     Returns {media_id: {engine_name: status, ...}, ...}
@@ -167,7 +174,6 @@ def get_jobs_by_ids(session: Session, media_ids: list[str]) -> dict[str, dict[st
     for row in rows:
         result.setdefault(row.media_id, {})[row.engine_name] = row.status
     return result
-
 
 def insert_jobs_batch(session: Session, media_ids: list[str]):
     """Bulk-insert 6 job rows for each media_id that doesn't have them yet."""
@@ -181,19 +187,34 @@ def insert_jobs_batch(session: Session, media_ids: list[str]):
     if to_add:
         session.bulk_save_objects(to_add)
         session.commit()
-def get_pending_media_ids(session, engines=None):
+
+def get_pending_media_ids(session, engines=None, max_file_size_mb=0, max_duration_minutes=0):
     """Return sorted list of media_ids that have at least one pending job.
 
     When `engines` is specified, only media_ids with pending jobs for those
     engine types are included.
+    When `max_file_size_mb > 0`, only assets whose file_size is within the
+    limit are returned (JOIN assets table).  Assets with file_size = 0 or
+    NULL are always excluded.
+    When `max_duration_minutes > 0`, only assets whose duration is within
+    the limit. Assets with duration = 0 or NULL are always excluded.
 
     P2: used by _orchestrate_batch() to discover which videos need processing.
     """
     from app.models.ai_engine_job import AIEngineJob
-    q = session.query(AIEngineJob.media_id).filter(AIEngineJob.status == "pending")
+    from app.models.asset import Asset
+    from sqlalchemy import and_
+    q = session.query(AIEngineJob.media_id).join(
+        Asset, AIEngineJob.media_id == Asset.id
+    ).filter(
+        and_(Asset.file_size.isnot(None), Asset.file_size > 0),
+        AIEngineJob.status == "pending",
+    )
     if engines:
         q = q.filter(AIEngineJob.engine_name.in_(engines))
+    if max_file_size_mb > 0:
+        q = q.filter(Asset.file_size <= max_file_size_mb * 1024 * 1024)
+    if max_duration_minutes > 0:
+        q = q.filter(and_(Asset.duration.isnot(None), Asset.duration > 0, Asset.duration <= max_duration_minutes * 60))
     rows = q.distinct(AIEngineJob.media_id).order_by(AIEngineJob.media_id).all()
     return [str(r[0]) for r in rows]
-
-

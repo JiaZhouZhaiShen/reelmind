@@ -34,10 +34,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 // ── Pipeline Execution ──
 
 
-export function getPendingAssetCount(engines?: string[]) {
-  const params = engines?.length ? `?engines=${engines.join(',')}` : '';
-  return request<any>(`/ai/pending-count${params}`);
-}
+    export function getPendingAssetCount(engines?: string[], max_file_size_mb?: number, max_duration_minutes?: number) {
+      const params = new URLSearchParams();
+      if (engines?.length) params.set("engines", engines.join(","));
+      if (max_file_size_mb) params.set("max_file_size_mb", String(max_file_size_mb));
+      if (max_duration_minutes) params.set("max_duration_minutes", String(max_duration_minutes));
+      const qs = params.toString();
+      return request<any>(`/ai/pending-count${qs ? `?${qs}` : ""}`);
+    }
 
 export function getScanStatusAI() {
   return request<{
@@ -122,14 +126,6 @@ export function cancelAIPipeline(videoId: string) {
 }
 
 
-export function resetErrorVideos() {
-  return request<{
-    status: string;
-    reset_count: number;
-    skipped_count: number;
-    skipped?: { gone: number; rendered: number; too_large: number };
-  }>('/ai/reset-error-videos', { method: 'POST' });
-}
 
 export function resetAssetAI(id: string) {
   return request<{ status: string; video_id: string }>('/ai/reset-asset/' + id, { method: 'POST' });
@@ -236,4 +232,7 @@ export function listBatchCheckpoints(limit: number = 20) {
 
 export function getBatchEngineProgress(batchId: string) {
   return request<any>('/ai/pipeline/batch/engine-progress/' + batchId)
+}
+export function resetErrorJobs() {
+  return request<{ count: number }>('/ai/pipeline/jobs/reset-errors', { method: 'POST' });
 }

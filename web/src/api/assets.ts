@@ -195,6 +195,14 @@ export function browsePathPaginated(path: string, libraryId?: string, page = 1, 
   if (libraryId) params.set('library_id', libraryId);
   return request(`/assets/browse-path?${params}`);
 }
+// ── Auto-Scan Settings ──
+export function getScanSettings(): Promise<{ scan_interval_seconds: number }> {
+  return request('/system/scan-settings');
+}
+export function setScanSettings(data: { scan_interval_seconds: number }): Promise<{ status: string }> {
+  return request('/system/scan-settings', { method: 'PUT', body: JSON.stringify(data) });
+}
+
 // ── Thumbnails ──
 export function repairThumbnails(): Promise<{ status: string; message: string; repaired: number; failed: number }> {
   return request('/assets/repair-thumbnails', { method: 'POST' });

@@ -68,14 +68,21 @@ async def lifespan(app: FastAPI):
         from .api.scan import trigger_library_scan
         from .database import async_session_factory
         from .models.library import Library
+        from .models.system_settings import SystemSetting
         from sqlalchemy import select
 
         async def _periodic_scan_loop():
-            _logger.info("Periodic auto-scan started (interval=%ds)", settings.SCAN_INTERVAL_SECONDS)
+            _logger.info("Periodic auto-scan loop initialized")
             await asyncio.sleep(30)
             while True:
                 try:
-                    await asyncio.sleep(settings.SCAN_INTERVAL_SECONDS)
+                    # Read scan interval from DB
+                    async with async_session_factory() as session:
+                        rows = (await session.execute(select(SystemSetting).where(
+                            SystemSetting.key == "scan_interval_seconds"
+                        ))).scalars().all()
+                    interval = int(rows[0].value) if rows else 300
+                    await asyncio.sleep(interval)
                     async with async_session_factory() as session:
                         result = await session.execute(
                             select(Library).where(Library.auto_scan == True)
@@ -83,7 +90,7 @@ async def lifespan(app: FastAPI):
                         libs = result.scalars().all()
                     for lib in libs:
                         try:
-                            await trigger_library_scan(str(lib.id))
+                            await trigger_library_scan(str(lib.id), purge=True)
                         except Exception as e:
                             _logger.warning("Auto-scan error for library %s: %s", lib.id, e)
                 except asyncio.CancelledError:
@@ -96,7 +103,6 @@ async def lifespan(app: FastAPI):
         _logger.info("Periodic auto-scan background task created")
     except Exception as e:
         _logger.warning("Could not start periodic auto-scan: %s", e)
-
     yield
     _logger.info("Shutting down %s", settings.APP_NAME)
     if _periodic_scan_task:

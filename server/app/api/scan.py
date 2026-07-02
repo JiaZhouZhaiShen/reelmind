@@ -81,7 +81,7 @@ async def _build_indexing_service(library_id: str) -> IndexingService:
 
 
 # --- Reusable scan orchestrator (API + background loop) -----------------------
-async def trigger_library_scan(lib_id: str) -> dict:
+async def trigger_library_scan(lib_id: str, purge: bool = False) -> dict:
     """Start a scan for a library. Returns result dict. Used by both API and periodic background scan."""
     async with async_session_factory() as session:
         # Check for existing running scan
@@ -163,6 +163,14 @@ async def trigger_library_scan(lib_id: str) -> dict:
                         excluded_extensions=excluded_extensions,
                     )
 
+                # Purge orphaned assets if requested (after scan completes)
+                if purge:
+                    try:
+                        purged = await service.wait_and_purge(lib_id)
+                        logger.info("Purge completed: removed %d orphaned assets for library %s", purged, lib_id)
+                    except Exception as purge_e:
+                        logger.warning("Purge failed for library %s: %s", lib_id, purge_e)
+
                 # Update library totals and mark job completed
                 async with async_session_factory() as s:
                     total_assets = (await s.execute(
@@ -206,12 +214,13 @@ async def trigger_library_scan(lib_id: str) -> dict:
 @router.post("/{library_id}", status_code=202)
 async def start_scan(
     library_id: uuid.UUID,
+    purge: bool = Query(False, description="Also purge orphaned assets"),
     session: AsyncSession = Depends(get_session),
     _: dict = Depends(require_auth),
 ):
     """Start an inline asyncio scan for a library (Celery-free)."""
     lib_id = str(library_id)
-    result = await trigger_library_scan(lib_id)
+    result = await trigger_library_scan(lib_id, purge=purge)
     if result.get("status") == "error":
         status_code_map = {"library_not_found": 404, "already_running": 409}
         raise HTTPException(

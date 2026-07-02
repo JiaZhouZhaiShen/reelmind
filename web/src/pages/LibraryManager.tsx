@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Library, Plus, Trash2, Scan, FolderOpen, Film, Loader2, ExternalLink, ArrowLeft, X, Circle, CheckCircle, AlertCircle, Clock, PauseCircle, Play, Pencil, Save, SkipForward, Image } from 'lucide-react'
+import { Library, Plus, Trash2, Scan, FolderOpen, Film, Loader2, ExternalLink, ArrowLeft, X, Circle, CheckCircle, AlertCircle, Clock, PauseCircle, Play, Pencil, Save, SkipForward, Image, Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../stores/app'
 import { api } from '../api/client'
@@ -29,6 +29,9 @@ export function LibraryManager() {
   const [editNewPath, setEditNewPath] = useState('')
   const [saving, setSaving] = useState(false)
   const [repairing, setRepairing] = useState(false)
+  const [autoScanEnabled, setAutoScanEnabled] = useState(true)
+  const [scanInterval, setScanInterval] = useState(300)
+  const [autoScanSaving, setAutoScanSaving] = useState(false)
   const [scanStatus, setScanStatus] = useState<Record<string, { pending_import: number; recent_jobs: ScanJobInfo[] }>>({})
   const pollingRef = useRef<Record<string, ReturnType<typeof setInterval>>>({})
  
@@ -165,6 +168,28 @@ export function LibraryManager() {
     }
   }
  
+  const loadAutoScanSettings = async () => {
+    try {
+      const data = await api.getScanSettings()
+      setScanInterval(data.scan_interval_seconds)
+    } catch (e) {
+      console.error("Failed to load auto-scan settings:", e)
+    }
+  }
+
+  const handleSaveAutoScan = async () => {
+    setAutoScanSaving(true)
+    try {
+      await api.setScanSettings({
+        scan_interval_seconds: scanInterval,
+      })
+      setTimeout(() => setAutoScanSaving(false), 1500)
+    } catch (e) {
+      console.error("Failed to save auto-scan settings:", e)
+      setAutoScanSaving(false)
+    }
+  }
+
   const handleEditOpen = (lib: LibraryType) => {
     setEditingLib(lib)
     setEditName(lib.name)
@@ -284,25 +309,55 @@ export function LibraryManager() {
             <p className="text-sm text-gray-500">{t('libraryManager.count', { count: libraries.length })}</p>
           </div>
         </div>
-        <button
-          onClick={handleRepairThumbnails}
-          disabled={repairing}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 rounded-lg text-sm transition-colors"
-        >
-          {repairing ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Image className="w-4 h-4" />
-          )}
-          {t('libraryManager.repairThumbnails')}
-        </button>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          {t('libraryManager.newLibrary')}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Interval Select */}
+          <span className="text-xs text-gray-400 whitespace-nowrap">{t('libraryManager.autoScan')}</span>
+          {/* Interval Select */}
+          <select
+            value={scanInterval}
+            onChange={(e) => { setScanInterval(Number(e.target.value)); null }}
+            className="bg-gray-900 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/60 cursor-pointer"
+          >
+            <option value={60}>1{t('libraryManager.min')}</option>
+            <option value={300}>5{t('libraryManager.min')}</option>
+            <option value={600}>10{t('libraryManager.min')}</option>
+            <option value={1800}>30{t('libraryManager.min')}</option>
+            <option value={3600}>1{t('libraryManager.h')}</option>
+          </select>
+          {/* Save Button */}
+          <button
+            onClick={handleSaveAutoScan}
+            disabled={autoScanSaving}
+            className={'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ' + (autoScanSaving ? 'bg-emerald-600 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white')}
+          >
+            {autoScanSaving ? (
+              <><Loader2 className="w-3 h-3 animate-spin" />{t('libraryManager.saved')}</>
+            ) : (
+              <><Save className="w-3 h-3" />{t('libraryManager.save')}</>
+            )}
+          </button>
+          {/* Repair Thumbnails */}
+          <button
+            onClick={handleRepairThumbnails}
+            disabled={repairing}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 rounded-lg text-xs transition-colors"
+          >
+            {repairing ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Image className="w-3 h-3" />
+            )}
+            {t('libraryManager.repairThumbnails')}
+          </button>
+          {/* New Library */}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            {t('libraryManager.newLibrary')}
+          </button>
+        </div>
       </div>
       {showCreate && (
         <div className="mb-6 bg-gray-900 rounded-lg p-4 border border-gray-800">

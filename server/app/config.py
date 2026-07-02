@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     FFPROBE_TIMEOUT: int = 60             # Seconds per ffprobe call
     ENABLE_SSE_PROGRESS: bool = True       # Enable real-time scan progress via SSE
     ENABLE_ASYNC_INDEXER: bool = True      # Use async metadata indexing (non-Celery)
+    ENABLE_PURGE_ON_SCAN: bool = True      # Auto-purge deleted files from DB on scan
 
     # --- Frontend ---
     FRONTEND_DIST: str = "../web/dist"

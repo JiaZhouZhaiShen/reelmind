@@ -11,6 +11,8 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import select, func
 
 from ..database import get_session
+from ..auth import get_current_user
+from ..models.system_settings import SystemSetting
 from ..models.asset import Asset
 from ..models.library import Library
 from ..models.job import Job
@@ -63,6 +65,48 @@ async def health_check():
     else:
         logger.debug("Health check: %.1f GB free", free_gb)
     return {"status": "healthy" if free_gb > settings.MIN_FREE_SPACE_GB else "low_space", "free_space_gb": round(free_gb, 1)}
+
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+@router.get("/scan-settings")
+async def get_scan_settings(
+    session: AsyncSession = Depends(get_session),
+    _: dict = Depends(get_current_user),
+):
+    """Get global scan settings."""
+    from sqlalchemy import select as _select
+    row = (await session.execute(
+        _select(SystemSetting).where(SystemSetting.key == "scan_interval_seconds")
+    )).scalar_one_or_none()
+    return {
+        "scan_interval_seconds": int(row.value) if row else 300,
+    }
+
+
+@router.put("/scan-settings")
+async def update_scan_settings(
+    data: dict,
+    session: AsyncSession = Depends(get_session),
+    _: dict = Depends(get_current_user),
+):
+    """Update global scan settings."""
+    from sqlalchemy import select as _select
+    if "scan_interval_seconds" in data:
+        key = "scan_interval_seconds"
+        value = str(data[key])
+        stmt = _select(SystemSetting).where(SystemSetting.key == key)
+        row = (await session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            row = SystemSetting(
+                key=key, value=value, value_type="int",
+                category="scanning", description="Auto-scan interval in seconds",
+            )
+        else:
+            row.value = value
+        session.add(row)
+    await session.commit()
+    return {"status": "ok"}
 
 
 
