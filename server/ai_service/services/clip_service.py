@@ -56,7 +56,7 @@ def _load_clip():
     return _clip_model, _clip_preprocess, _clip_tokenizer, _clip_device
 
 
-def encode_frames(video_path: str | Path, frame_timestamps: list) -> list[dict]:
+def encode_frames(video_path: str | Path, frame_timestamps: list, rotation: int | None = None) -> list[dict]:
     import cv2
     import numpy as np
     import torch
@@ -68,6 +68,12 @@ def encode_frames(video_path: str | Path, frame_timestamps: list) -> list[dict]:
         return []
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
+    # Rotation detection (once, applied per frame before preprocessing)
+    if rotation is None:
+        from utils.rotation import get_video_rotation
+        rotation = get_video_rotation(video_path)
+    if rotation:
+        from utils.rotation import apply_rotation as _apply_clip_rotation
 
     images = []
     valid_ts = []
@@ -77,7 +83,10 @@ def encode_frames(video_path: str | Path, frame_timestamps: list) -> list[dict]:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
             if not ret:
-                continue
+               continue
+            # Apply rotation before color conversion and model preprocessing
+            if rotation:
+                frame = _apply_clip_rotation(frame, rotation)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame_pil = Image.fromarray(frame_rgb)
             preprocessed = preprocess(frame_pil)  # [C, H, W], no batch dim

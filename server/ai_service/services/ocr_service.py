@@ -57,7 +57,7 @@ def _load_ocr():
     return _ocr_instance
 
 
-def ocr_scene_middle(video_path: str | Path, time_sec: float) -> list[dict[str, Any]]:
+def ocr_scene_middle(video_path: str | Path, time_sec: float, rotation: int | None = None) -> list[dict[str, Any]]:
     """OCR on the scene middle frame.
 
     Returns:
@@ -78,6 +78,13 @@ def ocr_scene_middle(video_path: str | Path, time_sec: float) -> list[dict[str, 
 
     if not ret:
         return []
+    # Rotation correction (if needed) — apply before PaddleOCR
+    if rotation is None:
+        from utils.rotation import get_video_rotation
+        rotation = get_video_rotation(video_path)
+    if rotation:
+        from utils.rotation import apply_rotation
+        frame = apply_rotation(frame, rotation)
 
     # PaddleOCR takes BGR image directly
     result = ocr.ocr(frame, cls=False)

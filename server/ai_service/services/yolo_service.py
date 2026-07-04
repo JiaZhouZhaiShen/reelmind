@@ -76,7 +76,7 @@ def _load_yolo():
 
 
 
-def detect_scene_objects(video_path: str | Path, start_time: float, end_time: float) -> list[dict[str, Any]]:
+def detect_scene_objects(video_path: str | Path, start_time: float, end_time: float, rotation: int | None = None) -> list[dict[str, Any]]:
     """Detect objects in a scene by sampling 3 frames.
 
     Returns:
@@ -110,6 +110,12 @@ def detect_scene_objects(video_path: str | Path, start_time: float, end_time: fl
     object_counts = {}
 
     frames_batch = []
+    # Rotation detection (once, applied per frame before resize)
+    if rotation is None:
+        from utils.rotation import get_video_rotation
+        rotation = get_video_rotation(video_path)
+    if rotation:
+        from utils.rotation import apply_rotation as _apply_yolo_rotation
     try:
         for t in sample_times:
             if t < 0:
@@ -120,7 +126,10 @@ def detect_scene_objects(video_path: str | Path, start_time: float, end_time: fl
             cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_idx))
             ret, frame = cap.read()
             if not ret:
-                continue
+               continue
+            # ⚠ Rotation must be applied BEFORE cv2.resize() — resize to 640×640 after rotation loses orientation
+            if rotation:
+                frame = _apply_yolo_rotation(frame, rotation)
             if frame.shape[0] == 0 or frame.shape[1] == 0:
                 logger.warning("YOLO: zero-dim frame at time %.2f, skipping", t)
                 continue

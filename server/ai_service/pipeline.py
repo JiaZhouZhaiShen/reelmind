@@ -55,7 +55,7 @@ def _upsert_job(md, media_id_str: str, engine: str, status: str):
                      ON CONFLICT (media_id, engine_name)
                     DO UPDATE SET status = :st2, completed_at = NOW(), 
                        error_message = CASE WHEN :st2 = 'completed' THEN NULL ELSE ai_engine_jobs.error_message END"""),
-           {"mid": media_id_str, "eng": engine, "st": status, "deps": deps, "st2": status},
+            {"mid": media_id_str, "eng": engine, "st": status, "deps": deps, "st2": status},
         )
         md.commit()
     except Exception:
@@ -165,29 +165,36 @@ class AIPipeline:
             return {"status": "error", "message": "Video not found"}
 
         try:
+            # ── Step 0.5: Detect video rotation (cached for all downstream services) ──
+            from utils.rotation import get_video_rotation
+            self._rotation = get_video_rotation(str(video_path))
+
             # ── Step 0: Ensure video record exists ──
             session = self._get_session()
             video = session.query(Video).filter(Video.id == self.video_id).first()
             if not video:
-                import cv2
-                cap = cv2.VideoCapture(str(video_path))
-                duration = cap.get(cv2.CAP_PROP_FPS) and cap.get(cv2.CAP_PROP_FRAME_COUNT)
-                fps = cap.get(cv2.CAP_PROP_FPS)
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                cap.release()
-                if fps > 0:
-                    duration = duration / fps
-                video = Video(
-                    id=self.video_id,
-                    file_path=str(video_path),
-                    file_name=video_path.name,
-                    duration=float(duration or 0),
-                    width=width, height=height,
-                    fps=float(fps or 0),
-               )
-                session.add(video)
-                session.commit()
+               import cv2
+               cap = cv2.VideoCapture(str(video_path))
+               duration = cap.get(cv2.CAP_PROP_FPS) and cap.get(cv2.CAP_PROP_FRAME_COUNT)
+               fps = cap.get(cv2.CAP_PROP_FPS)
+               width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+               height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+               cap.release()
+               if fps > 0:
+                   duration = duration / fps
+               # Correct video record wh for display rotation
+               if self._rotation in (90, 270):
+                    width, height = height, width
+               video = Video(
+                   id=self.video_id,
+                   file_path=str(video_path),
+                   file_name=video_path.name,
+                   duration=float(duration or 0),
+                   width=width, height=height,
+                   fps=float(fps or 0),
+              )
+               session.add(video)
+               session.commit()
 
             # Check which engines are already completed (avoid re-processing)
             engine_statuses = _get_engine_jobs(self.video_id)
@@ -236,7 +243,7 @@ class AIPipeline:
                         )
                         thumb_path = thumb_dir / f"scene_{sc['index']:04d}.jpg"
                         if not thumb_path.exists():
-                            extract_thumbnail(str(video_path), sc["thumbnail_time"], str(thumb_path))
+                            extract_thumbnail(str(video_path), sc["thumbnail_time"], str(thumb_path), rotation=self._rotation)
                         scene.thumbnail_path = str(thumb_path.resolve())
                         session.add(scene)
                         session.flush()
@@ -282,9 +289,9 @@ class AIPipeline:
                 from services.yolo_service import detect_scene_objects, _unload_yolo
                 for sc_idx, scene in enumerate(scene_records):
                     try:
-                        objects = detect_scene_objects(
-                            str(video_path), scene.start_time, scene.end_time
-                        )
+                       objects = detect_scene_objects(
+                            str(video_path), scene.start_time, scene.end_time, rotation=self._rotation
+                       )
                         for obj in objects:
                             tag = SceneTag(
                                 scene_id=scene.id, label=obj["label"],
@@ -312,7 +319,7 @@ class AIPipeline:
                 for sc_idx, scene in enumerate(scene_records):
                     try:
                         mid_time = (scene.start_time + scene.end_time) / 2
-                        ocr_results = ocr_scene_middle(str(video_path), mid_time)
+                        ocr_results = ocr_scene_middle(str(video_path), mid_time, rotation=self._rotation)
                         for ocr_item in ocr_results:
                             ocr_rec = SceneOCR(
                                 scene_id=scene.id, text=ocr_item["text"],
@@ -346,7 +353,7 @@ class AIPipeline:
                     from services.clip_service import encode_frames, _unload_clip
                     _update_model_state("clip", True)
                     try:
-                        frame_embeddings = encode_frames(str(video_path), clip_mid_times)
+                        frame_embeddings = encode_frames(str(video_path), clip_mid_times, rotation=self._rotation)
                         _clip_ok = bool(frame_embeddings)
                     except Exception as e:
                         logger.error("CLIP batch encode failed: %s", e)
@@ -835,6 +842,9 @@ def process_batch(
                     ai_s.close()
                     if not video:
                         continue
+                    # Detect rotation once per video for batch CLIP path
+                    from utils.rotation import get_video_rotation
+                    _batch_clip_rotation = get_video_rotation(str(video.file_path))
                     for sdx, scene in enumerate(sc_list):
                         if cancel_event and cancel_event.is_set():
                             break
@@ -843,7 +853,7 @@ def process_batch(
                         try:
                             mid_time = (scene.start_time + scene.end_time) / 2
                             embs = _timeout_run(
-                                _encode_frames, video.file_path, [mid_time],
+                                _encode_frames, video.file_path, [mid_time], _batch_clip_rotation,
                                 timeout_seconds=30,
                             )
                             ai_s = get_ai_session()

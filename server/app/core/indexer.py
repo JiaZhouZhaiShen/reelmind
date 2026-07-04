@@ -157,8 +157,7 @@ def _get_thumbnail_semaphore() -> asyncio.Semaphore:
 
 async def probe_video_async(path: str | Path) -> dict[str, Any]:
     """Async ffprobe with concurrency semaphore and safety flags.
-    
-    Core performance optimization:
+        Core performance optimization:
     - Uses asyncio.create_subprocess_exec instead of blocking subprocess.run
     - Respects FFPROBE_CONCURRENCY via asyncio.Semaphore
     - Adds -analyzeduration and -probesize to prevent hang on corrupted files
@@ -214,8 +213,7 @@ async def probe_video_async(path: str | Path) -> dict[str, Any]:
 
 def probe_video(path: str | Path) -> dict[str, Any]:
     """Synchronous ffprobe (backward compatible).
-    
-    Also adds safety flags -analyzeduration/-probesize.
+        Also adds safety flags -analyzeduration/-probesize.
     """
     logger.info("Probing video (sync): %s", path)
     cmd = [
@@ -348,10 +346,31 @@ def _raw_extract_metadata(data: dict[str, Any]) -> dict[str, Any]:
         except (ValueError, TypeError):
             pass
 
+    # --- Rotation-aware width/height correction ---
+    _rotation = 0
+    rotate_tag = v_tags.get("rotate")
+    if rotate_tag is not None:
+        _rotation = int(rotate_tag) % 360
+    if _rotation == 0:
+        side_data_list = (video_stream or {}).get("side_data_list", [])
+        for sd in side_data_list:
+            if sd.get("side_data_type") == "Display Matrix":
+                r = sd.get("rotation")
+                if r is not None:
+                    _rotation = int(r) % 360
+                    break
+
+    raw_w = int(video_stream.get("width", 0)) if video_stream else None
+    raw_h = int(video_stream.get("height", 0)) if video_stream else None
+    if _rotation in (90, 270) and raw_w is not None and raw_h is not None:
+        display_w, display_h = raw_h, raw_w
+    else:
+        display_w, display_h = raw_w, raw_h
+
     # 1. Basic fields
     basic: dict[str, Any] = {
-        "width": int(video_stream.get("width", 0)) if video_stream else None,
-        "height": int(video_stream.get("height", 0)) if video_stream else None,
+        "width": display_w,
+        "height": display_h,
         "duration": fmt_duration,
         "fps": _parse_fps(video_stream) if video_stream else None,
         "codec": v_codec_name,
@@ -420,14 +439,12 @@ async def batch_index_metadata(
     cancel_check: Callable[[], bool] | None = None,
 ) -> list[dict[str, Any]]:
     """Process a batch of video files through async ffprobe concurrently.
-    
-    Args:
+        Args:
         items: List of dicts with at least {"asset_id": str, "video_path": str}
                Optional: {"included_fields": list[str]}
         progress_callback: Called as callback(completed, total) after each file
         cancel_check: Called before each file; return True to abort
-    
-    Returns:
+        Returns:
         List of result dicts, each with:
             asset_id, status ("ok"/"error"), metadata (on success), error (on failure)
     """
@@ -486,8 +503,8 @@ from .scanner import scandir_walk, scan_directory, is_video_file
 
 # Re-export for convenience
 __all__ = ["IndexingService", "batch_index_metadata", "probe_video", "probe_video_async",
-           "extract_metadata", "extract_metadata_async", "ProbeStats",
-           "METADATA_FIELD_DEFINITIONS", "ALL_METADATA_KEYS"]
+            "extract_metadata", "extract_metadata_async", "ProbeStats",
+            "METADATA_FIELD_DEFINITIONS", "ALL_METADATA_KEYS"]
 
 
 class IndexingService:
@@ -495,13 +512,13 @@ class IndexingService:
     Orchestrates a full library scan:
 
     1. Step A (discovery): walks root_path, collects all video file paths.
-       Does NOT call ffprobe 鈥?just filesystem iteration.
+        Does NOT call ffprobe 鈥?just filesystem iteration.
     2. Step B (probing): feeds discovered files into a Semaphore-guarded
-       async worker pool that calls probe_video_async().
+        async worker pool that calls probe_video_async().
     3. Batch writer: every METADATA_BATCH_SIZE results, issues one bulk
-       UPSERT so the DB isn't hammered with single-row commits.
+        UPSERT so the DB isn't hammered with single-row commits.
     4. Progress: publishes {total, done, failed, stage} to Redis pubsub,
-       which feeds SSE endpoints for real-time frontend progress bars.
+        which feeds SSE endpoints for real-time frontend progress bars.
     """
 
     def __init__(self):
