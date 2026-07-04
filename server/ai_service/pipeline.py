@@ -165,11 +165,23 @@ class AIPipeline:
             return {"status": "error", "message": "Video not found"}
 
         try:
-            # ── Step 0.5: Detect video rotation (cached for all downstream services) ──
+# ── Step 0.5: Detect video rotation (cached for all downstream services) ──
+# cv2.VideoCapture 不暴露 rotation tag，须 ffprobe 单独检测。
+# 这是单视频模式下唯一的 ffprobe 开销。
+# cv2.VideoCapture 不暴露 rotation tag，须 ffprobe 单独检测。
+# 这是单视频模式下唯一的 ffprobe 开销。
             from utils.rotation import get_video_rotation
-            self._rotation = get_video_rotation(str(video_path))
+# ── Step 0: Ensure video record exists ──
+# ⚠ Video record wh 会根据 self._rotation 做校正（90/270 时交换 w/h），
+# 确保 SQLite videos 表的 wh 与 PG assets 表一致（均为显示方向尺寸）。
+# 后端 orientation_filter（assets.py）基于 Asset.width / height 列比较（w>h / h>w / w==h），
+# 不依赖 tags.rotate — DB wh 校正后它自动对竖屏视频生效。
 
-            # ── Step 0: Ensure video record exists ──
+# ── Step 0: Ensure video record exists ──
+# ⚠ Video record wh 会根据 self._rotation 做校正（90/270 时交换 w/h），
+# 确保 SQLite videos 表的 wh 与 PG assets 表一致（均为显示方向尺寸）。
+# 后端 orientation_filter（assets.py）基于 Asset.width / height 列比较（w>h / h>w / w==h），
+# 不依赖 tags.rotate — DB wh 校正后它自动对竖屏视频生效。
             session = self._get_session()
             video = session.query(Video).filter(Video.id == self.video_id).first()
             if not video:
@@ -504,11 +516,20 @@ def process_batch(
     progress_callback: Callable | None = None,
     cancel_event: threading.Event | None = None,
 ) -> dict:
-    """Batch pipeline: each model processes ALL pending items before next model loads."""
+    """Batch pipeline: each model processes ALL pending items before next model loads.
+
+    Rotation handling:
+    Batch 模式没有 Step 0.5（无统一的 rotation 检测节点），
+    每个 service 在取帧时独立调用 get_video_rotation() 检测。
+    这意味着每个视频在 TransNetV2/YOLO/OCR/CLIP 四个模块
+    步骤下各有一次 ffprobe 调用，而非像 AIPipeline.run() 那样只有一次。
+    功能上完全正确，仅性能上略有开销 (3升/视频)。
+    """
     import uuid as _uuid
     import cv2 as _cv2
     from pathlib import Path as _Path
     from models.ai_models import Video as _AIVideo, Scene as _Scene, SceneTag as _SceneTag, SceneOCR as _SceneOCR, Frame as _Frame, Subtitle as _Subtitle, get_ai_session
+    from utils.rotation import get_video_rotation as _get_batch_rot
 
     # Record which models were already loaded (manually) before this batch
     from main import _model_states as _ms3, _model_lock as _ml3
@@ -612,6 +633,7 @@ def process_batch(
                         duration=float(dur or 0), width=w, height=h, fps=float(fps or 0))
                     ai_s.add(video)
                     ai_s.flush()
+                    _batch_rot = _get_batch_rot(vp)  # detect once, reuse for all scenes
                     scenes_data = json.loads(subprocess.run([sys.executable, '/app/services/scene_worker.py', vp], capture_output=True, text=True, timeout=600, cwd='/app').stdout)
                     thumb_dir = thumb_base / str(asset.id)
                     thumb_dir.mkdir(parents=True, exist_ok=True)
@@ -619,7 +641,7 @@ def process_batch(
                         scene = _Scene(video_id=str(asset.id), scene_index=sc["index"],
                             start_time=sc["start_time"], end_time=sc["end_time"])
                         tp = thumb_dir / f"scene_{sc['index']:04d}.jpg"
-                        _extract_thumb(vp, sc["thumbnail_time"], str(tp))
+                        _extract_thumb(vp, sc["thumbnail_time"], str(tp), rotation=_batch_rot)
                         scene.thumbnail_path = str(tp.resolve())
                         ai_s.add(scene)
                     ai_s.commit()
