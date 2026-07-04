@@ -131,6 +131,7 @@ class AIPipeline:
         self.progress_callback = progress_callback or (lambda msg, pct: None)
         self._session = None
         self.engines = engines
+        self._rotation = 0
 
     def _get_session(self):
         if self._session is None:
@@ -171,6 +172,7 @@ class AIPipeline:
 # cv2.VideoCapture 不暴露 rotation tag，须 ffprobe 单独检测。
 # 这是单视频模式下唯一的 ffprobe 开销。
             from utils.rotation import get_video_rotation
+            self._rotation = get_video_rotation(str(video_path))
 # ── Step 0: Ensure video record exists ──
 # ⚠ Video record wh 会根据 self._rotation 做校正（90/270 时交换 w/h），
 # 确保 SQLite videos 表的 wh 与 PG assets 表一致（均为显示方向尺寸）。
@@ -301,9 +303,9 @@ class AIPipeline:
                 from services.yolo_service import detect_scene_objects, _unload_yolo
                 for sc_idx, scene in enumerate(scene_records):
                     try:
-                       objects = detect_scene_objects(
+                        objects = detect_scene_objects(
                             str(video_path), scene.start_time, scene.end_time, rotation=self._rotation
-                       )
+                        )
                         for obj in objects:
                             tag = SceneTag(
                                 scene_id=scene.id, label=obj["label"],

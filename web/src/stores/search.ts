@@ -6,9 +6,30 @@ import { useStore as useAppStore } from './app'
 import { useLibraryStore } from './library'
 import i18n from '../i18n/config'
 
+const SEARCH_SAVE_KEY = 'reelmind_search_state'
+
+function getInitialSearchState() {
+  try {
+    const saved = sessionStorage.getItem(SEARCH_SAVE_KEY)
+    if (!saved) return {}
+    const p = JSON.parse(saved)
+    return {
+      searchQuery: p.q || '',
+      searchDurationMin: p.minDur != null ? p.minDur : undefined,
+      searchDurationMax: p.maxDur != null ? p.maxDur : undefined,
+      searchFileSizeMin: p.minSize != null ? p.minSize : undefined,
+      searchFileSizeMax: p.maxSize != null ? p.maxSize : undefined,
+    }
+  } catch {}
+  return {}
+}
+
+const _init = getInitialSearchState()
+
 interface SearchState {
   searchResults: SearchResult[]
   searchTotal: number
+  sourceTotals: Record<string, number>
   searchQuery: string
   searching: boolean
   searchPage: number
@@ -24,18 +45,24 @@ interface SearchState {
   searchDurationMax: number | undefined
   searchFileSizeMin: number | undefined
   searchFileSizeMax: number | undefined
+  searchSourceFilter: string
+  searchOrientationFilter: string
   setSearchDurationFilter: (min: number | undefined, max: number | undefined) => void
  setSearchFileSizeFilter: (min: number | undefined, max: number | undefined) => void
   resetSearch: () => void
+  setSearchSourceFilter: (source: string) => void
+  setSearchOrientationFilter: (o: string) => void
 
  searchLoadResults: (page: number, append: boolean) => Promise<void>
   performSearch: (extraParams?: Record<string, unknown>) => Promise<void>
+  removeResults: (ids: string[]) => void
 }
 
 export const useSearchStore = create<SearchState>((set, get) => ({
   searchResults: [],
   searchTotal: 0,
-  searchQuery: '',
+  sourceTotals: {},
+  searchQuery: _init.searchQuery ?? '',
   searching: false,
   searchPage: 1,
   searchHasMore: true,
@@ -46,13 +73,26 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   searchTriggerKey: 0,
   triggerSearch: () => set((state) => ({ searchTriggerKey: state.searchTriggerKey + 1 })),
 
-  searchDurationMin: undefined,
-  searchDurationMax: undefined,
-  searchFileSizeMin: undefined,
-  searchFileSizeMax: undefined,
+  searchDurationMin: _init.searchDurationMin,
+  searchDurationMax: _init.searchDurationMax,
+  searchFileSizeMin: _init.searchFileSizeMin,
+  searchFileSizeMax: _init.searchFileSizeMax,
+  searchSourceFilter: "all",
+  searchOrientationFilter: "all",
   setSearchDurationFilter: (min, max) => set({ searchDurationMin: min, searchDurationMax: max }),
  setSearchFileSizeFilter: (min, max) => set({ searchFileSizeMin: min, searchFileSizeMax: max }),
-  resetSearch: () => set({ searchResults: [], searchTotal: 0, searchQuery: '', searchDurationMin: undefined, searchDurationMax: undefined, searchFileSizeMin: undefined, searchFileSizeMax: undefined, searchPage: 1, searchHasMore: true, searchInitLoading: false, searchMoreLoading: false, searchError: null }),
+ resetSearch: () => set({ searchResults: [], searchTotal: 0, sourceTotals: {}, searchSourceFilter: "all", searchOrientationFilter: "all", searchQuery: '', searchDurationMin: undefined, searchDurationMax: undefined, searchFileSizeMin: undefined, searchFileSizeMax: undefined, searchPage: 1, searchHasMore: true, searchInitLoading: false, searchMoreLoading: false, searchError: null }),
+  setSearchSourceFilter: (source) => set({ searchSourceFilter: source }),
+  setSearchOrientationFilter: (o) => set({ searchOrientationFilter: o }),
+  removeResults: (ids: string[]) => {
+    set((state) => {
+      const remaining = state.searchResults.filter((r) => !ids.includes(r.id))
+      return {
+        searchResults: remaining,
+        searchTotal: state.searchTotal - (state.searchResults.length - remaining.length),
+      }
+    })
+  },
 
  performSearch: async (extraParams?: Record<string, unknown>) => {
     const { searchQuery } = get()
@@ -66,6 +106,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
         ...extraParams,
       })
       set({ searchResults: result.results, searchTotal: result.total })
+      set({ sourceTotals: (result as any).source_totals || {} })
     } catch (e) {
       console.error('Search failed:', e)
       useAppStore.setState({ error: i18n.t('store.searchFailed') + ': ' + ((e as any).message || e) })
@@ -75,34 +116,40 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   },
 
   searchLoadResults: async (page, append) => {
-    const { searchQuery, searchDurationMin, searchDurationMax, searchFileSizeMin, searchFileSizeMax } = get()
-    if (!searchQuery && searchDurationMin === undefined && searchDurationMax === undefined && searchFileSizeMin === undefined && searchFileSizeMax === undefined) return
+    const { searchQuery, searchDurationMin, searchDurationMax, searchFileSizeMin, searchFileSizeMax, searchSourceFilter, searchOrientationFilter } = get()
+    const { selectedLibraryId } = useLibraryStore.getState()
+    if (!searchQuery && searchDurationMin === undefined && searchDurationMax === undefined && searchFileSizeMin === undefined && searchFileSizeMax === undefined && !selectedLibraryId) return
     set({ searchError: null })
     if (append) set({ searchMoreLoading: true })
     else set({ searchInitLoading: true })
     try {
       const result = await api.smartSearch({
         q: searchQuery,
+        library_id: selectedLibraryId || undefined,
         page,
         page_size: 200,
         ...(searchDurationMin !== undefined ? { min_duration: searchDurationMin } : {}),
         ...(searchDurationMax !== undefined ? { max_duration: searchDurationMax } : {}),
         ...(searchFileSizeMin !== undefined ? { min_file_size: searchFileSizeMin } : {}),
-        ...(searchFileSizeMax !== undefined ? { max_file_size: searchFileSizeMax } : {}),
+                ...(searchFileSizeMax !== undefined ? { max_file_size: searchFileSizeMax } : {}),
+        ...(searchSourceFilter !== "all" ? { source_engine: ({ "tag": "yolo" })[searchSourceFilter] || searchSourceFilter } : {}),
+        ...(searchOrientationFilter !== "all" ? { orientation: searchOrientationFilter } : {}),
       })
       // Write search results to assetsById so VideoCard can read them (cross-store)
       const searchById: Record<string, any> = {}
       for (const r of result.results) {
         searchById[r.id] = toPseudoAsset(r)
       }
-      const appState = useAppStore.getState()
-      if (append) {
-        set({ searchResults: [...get().searchResults, ...result.results], searchTotal: result.total })
-        useAppStore.setState({ assetsById: { ...appState.assetsById, ...searchById } })
-      } else {
-        set({ searchResults: result.results, searchTotal: result.total })
-        useAppStore.setState({ assetsById: { ...appState.assetsById, ...searchById } })
-      }
+     const appState = useAppStore.getState()
+     if (append) {
+      set({ searchResults: [...get().searchResults, ...result.results], searchTotal: result.total })
+       if (get().searchSourceFilter === "all") set({ sourceTotals: (result as any).source_totals || {} })
+       useAppStore.setState({ assetsById: { ...appState.assetsById, ...searchById } })
+     } else {
+      set({ searchResults: result.results, searchTotal: result.total })
+       if (get().searchSourceFilter === "all") set({ sourceTotals: (result as any).source_totals || {} })
+       useAppStore.setState({ assetsById: { ...appState.assetsById, ...searchById } })
+     }
       set({ searchPage: page, searchHasMore: page * 200 < result.total })
     } catch (e: any) {
       console.error('Search failed:', e)

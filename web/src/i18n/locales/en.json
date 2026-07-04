@@ -775,6 +775,8 @@
   "searchPage.backToHome": "Back to search home",
   "searchPage.tryAdjustFilters": "Try different keywords or adjust filters",
   "searchPage.sourceMetadata": "Filename",
+  "searchPage.sourceClip": "Semantic Search",
+  "searchPage.sourceDiarization": "Speaker Diarization",
   "timelineView.yearLoadFailed": "Failed to load year data",
   "timelineView.dayLoadFailed": "Failed to load day data",
   "timelineView.assetLoadFailed": "Failed to load asset data",

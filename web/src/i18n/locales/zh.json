@@ -612,6 +612,8 @@
   "searchPage.resultUnit": "个结果",
   "searchPage.searchLabel": "搜索",
   "searchPage.sourceMetadata": "文件名",
+  "searchPage.sourceClip": "语义视觉搜索",
+  "searchPage.sourceDiarization": "说话人分离",
   "searchPage.tryAdjustFilters": "尝试不同关键词或调整筛选条件",
   "searchPage.trySearch": "试试搜索：",
   "searchVideoCard.archive": "归档",

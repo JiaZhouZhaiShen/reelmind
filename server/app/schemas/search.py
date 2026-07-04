@@ -16,6 +16,8 @@ class SearchQuery(BaseModel):
     sort_order: str = "desc"
     page: int = 1
     page_size: int = 50
+    source_engine: str | None = None
+    orientation: str = ""
 
 class ClipSearchQuery(BaseModel):
     q: str = ""

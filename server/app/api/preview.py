@@ -7,10 +7,11 @@ from urllib.parse import quote
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..database import get_session
 from ..models.asset import Asset, ClipSegment
 from ..models.ai import Scene, get_ai_session
@@ -25,13 +26,41 @@ def _safe_filename(name: str) -> str:
 router = APIRouter(prefix="/preview", tags=["Preview"])
 
 
-def _video_response(path: Path, media_type: str) -> FileResponse:
-    """Create a FileResponse with optimal caching and content headers for video streaming."""
+def _video_accel_response(path: Path, media_type: str) -> Response:
+    """Map file path to nginx X-Accel-Redirect for zero-copy video serving.
+
+    Path mapping rules (keep in sync with nginx.conf /accel/ locations):
+      /nas-media/*           -> /accel/nas-media/*
+      /media/*               -> /accel/media/*
+      /data/reelmind/cache/* -> /accel/cache/*
+      /data/reelmind/*       -> /accel/data/*
+      fallback               -> FileResponse (direct read)
+    """
+    path_str = str(path)
+
+    if path_str.startswith("/nas-media/"):
+        accel_path = "/accel/nas-media/" + path_str[len("/nas-media/"):].lstrip("/")
+    elif path_str.startswith("/media/"):
+        accel_path = "/accel/media/" + path_str[len("/media/"):].lstrip("/")
+    elif path_str.startswith(str(settings.CACHE_ROOT)):
+        rel = Path(path_str).relative_to(settings.CACHE_ROOT)
+        accel_path = f"/accel/cache/{rel}"
+    elif path_str.startswith("/data/reelmind/"):
+        accel_path = "/accel/data/" + path_str[len("/data/reelmind/"):].lstrip("/")
+    else:
+        logger.warning("X-Accel fallback to FileResponse: %s", path_str)
+        return FileResponse(path_str, media_type=media_type, headers={
+            "Cache-Control": "public, max-age=86400",
+            "Accept-Ranges": "bytes",
+        })
+
     headers = {
+        "X-Accel-Redirect": quote(accel_path, safe="/"),
         "Cache-Control": "public, max-age=86400",
         "Accept-Ranges": "bytes",
+        "Content-Type": media_type,
     }
-    return FileResponse(str(path), media_type=media_type, headers=headers)
+    return Response(content=None, headers=headers)
 
 
 @router.get("/thumbnail/{asset_id}")
@@ -99,7 +128,7 @@ async def get_proxy_video(asset_id: uuid.UUID, session: AsyncSession = Depends(g
     if not proxy_path.exists():
         logger.warning("Proxy file missing for asset %s: %s", asset_id, asset.proxy_path)
         raise HTTPException(404, "Proxy file not found")
-    return _video_response(proxy_path, "video/mp4")
+    return _video_accel_response(proxy_path, "video/mp4")
 
 
 @router.get("/source/{asset_id}")
@@ -115,7 +144,7 @@ async def get_source_video(asset_id: uuid.UUID, session: AsyncSession = Depends(
     if not src_path.exists():
         logger.warning("Source file missing for asset %s: %s", asset_id, asset.original_path)
         raise HTTPException(404, "Source file not found")
-    return _video_response(src_path, asset.mime_type or "video/mp4")
+    return _video_accel_response(src_path, asset.mime_type or "video/mp4")
 
 
 @router.get("/download/{asset_id}")

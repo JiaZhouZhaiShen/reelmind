@@ -80,7 +80,7 @@ def _mark_checkpoint_cancelled(batch_id: str, reason: str = "") -> None:
     finally:
         session.close()
 
-def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = None, media_ids: list[str] | None = None) -> str | None:
+def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = None, media_ids: list[str] | None = None, event_id: int | None = None) -> str | None:
     """分批多次：取全部 pending → 分 chunk → 逐批调 AI 容器 → checkpoint。
 
     在后台线程中执行。Server 只负责编排，不做计算（铁律 ①）。
@@ -88,10 +88,24 @@ def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = Non
     如果传入了 batch_id，则使用已有 checkpoint（由调用方创建）。
     """
     if not _orchestration_lock.acquire(blocking=False):
-        logger.warning("_orchestrate_batch[%s]: 另一个 orchestration 正在运行，跳过", task_label)
-        if batch_id is not None:
-            _mark_checkpoint_cancelled(batch_id, reason="another orchestration is running")
+        logger.info("_orchestrate_batch[%s]: orchestration in progress, deferring event_id=%s", task_label, event_id)
         return None
+
+    # Mark event as consumed now that we hold the lock
+    if event_id is not None:
+        try:
+            from app.database import sync_session_factory
+            from app.models.orchestration_event import OrchestrationEvent
+            s = sync_session_factory()
+            try:
+                evt = s.query(OrchestrationEvent).filter(OrchestrationEvent.id == event_id).first()
+                if evt and not evt.consumed:
+                    evt.consumed = True
+                    s.commit()
+            finally:
+                s.close()
+        except Exception:
+            logger.exception("_orchestrate_batch[%s]: failed to consume event %s", task_label, event_id)
     from app.database import sync_session_factory
     from app.core.job_helpers import get_pending_media_ids
     from app.models.batch_checkpoint import BatchCheckpoint

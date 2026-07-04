@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import asyncio
 import datetime as dt_mod
 import json
@@ -1243,5 +1243,81 @@ def _extract_custom_metadata(meta: dict) -> dict:
                  "camera_make", "camera_model", "lens_model"}
     skip = basic_keys | exif_keys
     return {k: v for k, v in meta.items() if k not in skip and v is not None}
+
+
+# ============================================================================
+# Disk file cleanup for asset deletion
+# ============================================================================
+
+def delete_asset_disk_files(asset, logger) -> dict:
+    """Delete all disk files associated with an asset.
+
+    Returns dict with 'deleted' (list of paths) and 'errors' (list of dicts).
+    - original_path: only deleted if asset.is_imported is True
+    - thumbnail_path, proxy_path, webvtt_path: deleted if set and exists
+    - ClipSegment thumbnail_path (scene thumbnails): deleted if set and exists
+    - Empty parent directories are cleaned up (up to 2 levels).
+    """
+    result: dict[str, list] = {"deleted": [], "errors": []}
+
+    def _cleanup_empty_dir(dir_path, max_depth=2):
+        current = dir_path
+        depth = 0
+        while current and depth < max_depth:
+            try:
+                if not current.exists():
+                    current = current.parent
+                    depth += 1
+                    continue
+                if any(current.iterdir()):
+                    break
+                current.rmdir()
+                logger.debug("Removed empty directory: %s", current)
+                current = current.parent
+                depth += 1
+            except (OSError, PermissionError):
+                break
+
+    def _safe_delete(path_str, label):
+        if not path_str:
+            return
+        p = Path(path_str)
+        if not p.exists():
+            logger.debug("File not found (skip %s): %s", label, path_str)
+            return
+        try:
+            p.unlink()
+            result["deleted"].append(path_str)
+            logger.info("Deleted disk file [%s]: %s", label, path_str)
+            _cleanup_empty_dir(p.parent, max_depth=2)
+        except Exception as e:
+            result["errors"].append({"path": path_str, "error": str(e)})
+            logger.error("Failed to delete [%s] %s: %s", label, path_str, e)
+
+    # 1. Original video (only for imported assets)
+    if getattr(asset, "is_imported", False):
+        _safe_delete(getattr(asset, "original_path", None), "original")
+    elif getattr(asset, "original_path", None):
+        logger.warning(
+            "Skipping original file deletion for non-imported asset %s: %s",
+            getattr(asset, "id", "?"),
+            asset.original_path,
+        )
+
+    # 2. Thumbnail
+    _safe_delete(getattr(asset, "thumbnail_path", None), "thumbnail")
+
+    # 3. Proxy video
+    _safe_delete(getattr(asset, "proxy_path", None), "proxy")
+
+    # 4. WebVTT subtitle
+    _safe_delete(getattr(asset, "webvtt_path", None), "webvtt")
+
+    # 5. Scene segment thumbnails
+    segments = getattr(asset, "segments", []) or []
+    for seg in segments:
+        _safe_delete(getattr(seg, "thumbnail_path", None), "segment_thumbnail")
+
+    return result
 
 

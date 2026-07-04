@@ -143,7 +143,7 @@ export function batchTagAssets(assetIds: string[], tagIds: string[], action: 'ad
 }
 
 // ── Search ──
-export function smartSearch(params: { q?: string; library_id?: string; tags?: string; min_duration?: number; max_duration?: number; min_file_size?: number; max_file_size?: number; has_audio?: boolean; sort_by?: string; sort_order?: string; page?: number; page_size?: number; include_archived?: boolean }): Promise<{ results: SearchResult[]; total: number }> {
+export function smartSearch(params: { q?: string; library_id?: string; tags?: string; min_duration?: number; max_duration?: number; min_file_size?: number; max_file_size?: number; has_audio?: boolean; sort_by?: string; sort_order?: string; page?: number; page_size?: number; include_archived?: boolean; source_engine?: string; orientation?: string }): Promise<{ results: SearchResult[]; total: number }> {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') sp.set(k, String(v)); });
   if (!sp.has('include_archived')) sp.set('include_archived', 'false');

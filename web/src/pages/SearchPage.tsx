@@ -1,7 +1,7 @@
  import { useEffect, useState, useMemo, useRef, useCallback } from "react"
 import { BatchToolbar } from "../components/BatchToolbar"
 import { useTranslation } from 'react-i18next'
- import { Film, Monitor, Smartphone, FileText, MessageSquareText, Tag, Image, Sparkles, Video, ChevronDown } from "lucide-react"
+ import { Film, Monitor, Smartphone, FileText, MessageSquareText, Tag, Image, Sparkles, Video, ChevronDown, Search, Users } from "lucide-react"
  import { useSearchStore } from '../stores/search'
 import { useStore } from '../stores/app'
  import { SearchBar } from "../components/SearchBar"
@@ -18,7 +18,7 @@ const COL_BREAKPOINTS = [
 const GRID_ROW_HEIGHT = 204
 const LOAD_MORE_THRESHOLD = 800
 type VirtualRow = { type: "grid"; key: string; assets: Asset[]; searchResults: SearchResult[] } | { type: "loading"; key: string }
-type SourceFilter = "all" | "metadata" | "transcript" | "object" | "ocr" | "visual"
+ type SourceFilter = "all" | "scene" | "tag" | "ocr" | "clip" | "transcript" | "diarization"
 interface FilterOption {
   key: SourceFilter
   icon: typeof Sparkles
@@ -26,11 +26,12 @@ interface FilterOption {
 }
 const FILTER_OPTIONS: FilterOption[] = [
   { key: "all", icon: Sparkles, color: "text-gray-400" },
-  { key: "metadata", icon: FileText, color: "text-gray-400" },
-  { key: "transcript", icon: MessageSquareText, color: "text-gray-400" },
-  { key: "object", icon: Tag, color: "text-gray-400" },
+  { key: "scene", icon: Image, color: "text-gray-400" },
+  { key: "tag", icon: Tag, color: "text-gray-400" },
   { key: "ocr", icon: FileText, color: "text-gray-400" },
-  { key: "visual", icon: Image, color: "text-gray-400" },
+  { key: "clip", icon: Search, color: "text-gray-400" },
+  { key: "transcript", icon: MessageSquareText, color: "text-gray-400" },
+  { key: "diarization", icon: Users, color: "text-gray-400" },
 ]
 function getOrientation(w?: number, h?: number): "landscape" | "portrait" | "square" | undefined {
   if (!w || !h) return undefined
@@ -87,12 +88,13 @@ export function SearchPage() {
 
   const sourceLabel = (key: SourceFilter) => {
     switch (key) {
-      case 'all': return t('common.all')
-      case 'metadata': return t('searchPage.sourceMetadata')
-      case 'transcript': return t('common.subtitle')
-      case 'object': return t('common.tagLabel')
-      case 'ocr': return 'OCR'
-      case 'visual': return t('common.scene')
+     case 'all': return t('common.all')
+     case 'scene': return t('common.scene')
+     case 'tag': return t('common.tagLabel')
+     case 'ocr': return 'OCR'
+     case 'clip': return t('searchPage.sourceClip')
+     case 'transcript': return t('common.subtitle')
+     case 'diarization': return t('searchPage.sourceDiarization')
       default: return key
     }
   }
@@ -101,11 +103,14 @@ export function SearchPage() {
   const searchQuery = useSearchStore((s) => s.searchQuery)
   const setSearchQuery = useSearchStore((s) => s.setSearchQuery)
   const searchResults = useSearchStore((s) => s.searchResults)
-  const searchTotal = useSearchStore((s) => s.searchTotal)
-  const searchPage = useSearchStore((s) => s.searchPage)
+ const searchTotal = useSearchStore((s) => s.searchTotal)
+  const sourceTotals = useSearchStore((s) => s.sourceTotals)
+ const searchPage = useSearchStore((s) => s.searchPage)
   const searchHasMore = useSearchStore((s) => s.searchHasMore)
   const searchInitLoading = useSearchStore((s) => s.searchInitLoading)
   const searchMoreLoading = useSearchStore((s) => s.searchMoreLoading)
+  const searchSourceFilter = useSearchStore((s) => s.searchSourceFilter)
+  const searchOrientationFilter = useSearchStore((s) => s.searchOrientationFilter)
   const searchError = useSearchStore((s) => s.searchError)
   const searchLoadResults = useSearchStore((s) => s.searchLoadResults)
   const clearError = useStore((s) => s.clearError)
@@ -122,9 +127,24 @@ export function SearchPage() {
   const [orientationFilter, setOrientationFilter] = useState<OrientationFilter>("all")
   const [durFilter, setDurFilter] = useState("all")
   const [customMinStr, setCustomMinStr] = useState("")
-  const [customMaxStr, setCustomMaxStr] = useState("")
-  const [sizeFilter, setSizeFilter] = useState("all")
-  // ── Responsive cols ──
+ const [customMaxStr, setCustomMaxStr] = useState("")
+ const [sizeFilter, setSizeFilter] = useState("all")
+  const savedRef = useRef(false)
+ const SEARCH_SAVE_KEY = 'reelmind_search_state'
+  // ── Sync restore: pre-set loading when saved filters exist without keyword ──
+  useState(() => {
+    try {
+      const saved = sessionStorage.getItem(SEARCH_SAVE_KEY)
+      if (saved) {
+        const p = JSON.parse(saved)
+        if (!p.q && (p.minDur !== undefined || p.maxDur !== undefined || p.minSize !== undefined || p.maxSize !== undefined)) {
+          useSearchStore.setState({ searchInitLoading: true })
+        }
+      }
+    } catch {}
+    return true
+  })
+ // ── Responsive cols ──
   const contRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [contW, setContW] = useState(1200)
@@ -141,23 +161,66 @@ export function SearchPage() {
       for (const e of es) setContW(e.contentRect.width)
     })
     ro.observe(contRef.current)
-    return () => ro.disconnect()
+   return () => ro.disconnect()
+ }, [])
+  // ── Restore search state from sessionStorage on mount ──
+  useEffect(() => {
+    if (savedRef.current) return
+    savedRef.current = true
+    try {
+      const saved = sessionStorage.getItem(SEARCH_SAVE_KEY)
+      if (saved) {
+        const p = JSON.parse(saved)
+        if (p.q || p.maxDur !== undefined || p.minDur !== undefined) {
+          if (p.q) setSearchQuery(p.q)
+          if (p.minDur !== undefined || p.maxDur !== undefined) {
+            setSearchDurationFilter(p.minDur, p.maxDur)
+          }
+          if (p.minSize !== undefined || p.maxSize !== undefined) {
+            setSearchFileSizeFilter(p.minSize, p.maxSize)
+          }
+          if (p.durFilter) setDurFilter(p.durFilter)
+          if (p.sizeFilter) setSizeFilter(p.sizeFilter)
+          if (p.customMinStr) setCustomMinStr(p.customMinStr)
+         if (p.customMaxStr) setCustomMaxStr(p.customMaxStr)
+          // Trigger search when filters exist without keyword
+          if (!p.q && (p.minDur !== undefined || p.maxDur !== undefined || p.minSize !== undefined || p.maxSize !== undefined)) {
+            searchLoadResults(1, false)
+          }
+       }
+     }
+   } catch {}
   }, [])
-  // ── Trigger search when query changes (custom mode uses search button) ──
+  // ── Save search state to sessionStorage on every change ──
+  useEffect(() => {
+    if (!savedRef.current) return
+    sessionStorage.setItem(SEARCH_SAVE_KEY, JSON.stringify({
+      q: searchQuery,
+      minDur: searchDurationMin,
+      maxDur: searchDurationMax,
+      minSize: searchFileSizeMin,
+      maxSize: searchFileSizeMax,
+      durFilter,
+      sizeFilter,
+      customMinStr,
+      customMaxStr,
+    }))
+  }, [searchQuery, searchDurationMin, searchDurationMax, searchFileSizeMin, searchFileSizeMax, durFilter, sizeFilter, customMinStr, customMaxStr])
+ // ── Trigger search when query/duration/size/source filter changes ──
   useEffect(() => {
     if (durFilter === "custom") {
       const min = customMinStr === "" ? undefined : Number(customMinStr)
       const max = customMaxStr === "" ? undefined : Number(customMaxStr)
       setSearchDurationFilter(min, max)
-      searchLoadResults(1, false)
+      if (searchQuery || searchResults.length > 0) searchLoadResults(1, false)
       return
     }
 
-    if (searchQuery || searchDurationMin !== undefined || searchDurationMax !== undefined || searchFileSizeMin !== undefined || searchFileSizeMax !== undefined) {
+    if (searchQuery || searchResults.length > 0) {
       searchLoadResults(1, false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTriggerKey, searchQuery, searchDurationMin, searchDurationMax, searchFileSizeMin, searchFileSizeMax, durFilter])
+  }, [searchTriggerKey, searchQuery, searchDurationMin, searchDurationMax, searchFileSizeMin, searchFileSizeMax, durFilter, searchSourceFilter, searchOrientationFilter, customMinStr, customMaxStr])
   // ── Infinite scroll detection ──
   const handleScroll = useCallback(() => {
     if (!scrollRef.current || !searchHasMore || searchMoreLoading || searchInitLoading) return
@@ -166,29 +229,36 @@ export function SearchPage() {
       searchLoadResults(searchPage + 1, true)
     }
   }, [searchHasMore, searchMoreLoading, searchInitLoading, searchPage, searchLoadResults])
-  // ── Source filter ──
-  const sourceFiltered = useMemo(() => {
-    if (sourceFilter === "all") return searchResults
-    return searchResults.filter((r) => (r.match_sources ?? []).includes(sourceFilter))
-  }, [searchResults, sourceFilter])
+
   // ── Orientation filter ──
   const filteredResults = useMemo(() => {
-    if (orientationFilter === "all") return sourceFiltered
-    return sourceFiltered.filter((r) => {
-      const o = getOrientation(r.width, r.height)
-      return o === orientationFilter
-    })
-  }, [sourceFiltered, orientationFilter])
+    let results = searchResults
+    // Client-side fallback: filter by AI engine status (Phase 2/3 may skip source_engine)
+    if (sourceFilter !== "all") {
+      const statusMap: Record<string, (r: SearchResult) => boolean> = {
+        "scene": (r) => r.scene_status === "completed",
+        "tag": (r) => r.has_yolo_tags === true,
+        "ocr": (r) => r.has_ocr_text === true,
+        "clip": (r) => r.clip_status === "completed",
+        "transcript": (r) => r.transcript_status === "completed",
+        "diarization": (r) => r.diarization_status === "completed",
+      }
+      const checker = statusMap[sourceFilter]
+      if (checker) results = results.filter(checker)
+    }
+    return results
+  }, [searchResults, sourceFilter])
   // ── Source stats ──
   const sourceStats = useMemo(() => {
-    const stats: Record<string, number> = { all: searchResults.length }
-    for (const r of searchResults) {
-      for (const src of r.match_sources ?? []) {
-        stats[src] = (stats[src] || 0) + 1
-      }
-    }
+    const stats: Record<string, number> = { all: searchTotal }
+    stats["scene"] = sourceTotals?.scene || 0
+    stats["tag"] = sourceTotals?.yolo || 0
+    stats["ocr"] = sourceTotals?.ocr || 0
+    stats["clip"] = sourceTotals?.clip || 0
+    stats["transcript"] = sourceTotals?.transcript || 0
+    stats["diarization"] = sourceTotals?.diarization || 0
     return stats
-  }, [searchResults])
+  }, [searchTotal, sourceTotals])
   // ── Convert filtered search results → pseudo Asset[], then chunk for virtual grid ──
   const allChunks = useMemo(() => {
     const assets = filteredResults.map(toPseudoAsset)
@@ -230,7 +300,7 @@ export function SearchPage() {
     measureElement: (el) => el.getBoundingClientRect().height,
   })
   // ── Skeleton grid for initial loading ──
-  const skeletonCols = cols || 4
+  const skeletonCols = cols
   const skeletonRows = 3
   // ══════════════ Render ══════════════
   return (
@@ -328,49 +398,90 @@ export function SearchPage() {
         <div ref={contRef} className="flex h-full flex-1 min-w-0 overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden max-w-7xl mx-auto w-full">
             {/* ── Header ── */}
-            <div className="p-4 pb-2 shrink-0">
-             <div className="flex items-center gap-4 mb-6">
-              <div className="flex-1"><SearchBar /></div>
-               {!searchInitLoading && (
-                <button
-                   onClick={() => resetSearch()}
-                  className="text-gray-500 hover:text-gray-300 transition-colors shrink-0"
-                  title={t('searchPage.backToHome')}
-                >
-                  ✕
-                </button>
-              )}
-              {!searchInitLoading && (
-                  <div className="flex items-center border border-gray-700 rounded-lg overflow-hidden shrink-0">
-                    <button onClick={() => setOrientationFilter("all")}
-                      className={"py-1.5 px-3 text-xs transition-colors " + (orientationFilter === "all" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200")}>{t('common.all')}</button>
-                    <button onClick={() => setOrientationFilter("landscape")}
-                      className={"py-1.5 px-3 text-xs transition-colors flex items-center gap-1 " + (orientationFilter === "landscape" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200")}>
-                      <Monitor className="w-3.5 h-3.5" /><span>{t('common.landscape')}</span></button>
-                    <button onClick={() => setOrientationFilter("portrait")}
-                      className={"py-1.5 px-3 text-xs transition-colors flex items-center gap-1 " + (orientationFilter === "portrait" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200")}>
-                      <Smartphone className="w-3.5 h-3.5" /><span>{t('common.portrait')}</span></button>
-                  </div>
-                )}
+            <div className="p-4 pb-10 shrink-0">
+             <div className="flex justify-center mb-6">
+              <div className="w-80 sm:w-96 flex items-center gap-4">
+               <div className="flex-1 min-w-0"><SearchBar compact /></div>
+              <button
+                  onClick={() => {
+                    resetSearch(); useSearchStore.setState({ searchSourceFilter: "all", searchOrientationFilter: "all" });
+                    setDurFilter("all");
+                    setSizeFilter("all");
+                    setCustomMinStr("");
+                    setCustomMaxStr("");
+                    setOrientationFilter("all");
+                    setSourceFilter("all");
+                  }}
+                 className={"text-gray-500 hover:text-gray-300 transition-colors shrink-0 " + (searchInitLoading ? 'invisible' : '')}
+                 title={t('searchPage.backToHome')}
+               >
+                 ✕
+               </button>
               </div>
-              {searchQuery && (
+             </div>
+            {searchQuery && (
+               <div className="flex flex-col gap-2">
+                 <p className="text-sm text-gray-400 tabular-nums">
+                  {t('searchPage.searchLabel')} "<span className="text-gray-200">{searchQuery}</span>" — {formatCount(searchTotal)} {t('searchPage.resultUnit')}
+                 </p>
+                 <div className="flex items-center gap-2 flex-wrap">
+                   {FILTER_OPTIONS.map((opt) => {
+                     const count = sourceStats[opt.key]
+                     const isActive = sourceFilter === opt.key
+                     return (
+                       <button key={opt.key} onClick={() => { setSourceFilter(opt.key); useSearchStore.setState({ searchSourceFilter: opt.key }) }}
+                         className={"inline-flex items-center gap-1 py-1.5 px-3 text-xs rounded-lg transition-colors " + (isActive ? "bg-gray-700 text-white border border-gray-600" : "bg-gray-800/60 text-gray-400 hover:text-gray-200 border border-gray-800 hover:border-gray-600")}>
+                         <opt.icon className={"w-3 h-3 " + opt.color} />
+                         <span>{sourceLabel(opt.key)}</span>
+                         {count > 0 && <span className={"ml-0.5 text-[10px] " + (isActive ? "text-gray-400" : "text-gray-500")}>{count}</span>}
+                       </button>
+                    )
+                   })}
+                  {/* ── Orientation ── */}
+                  <div className="w-px h-5 bg-gray-700 mx-1" />
+                  <button onClick={() => { const next = orientationFilter === "landscape" ? "all" : "landscape"; setOrientationFilter(next); useSearchStore.setState({ searchOrientationFilter: next }) }}
+                    className={"inline-flex items-center gap-1 py-1.5 px-3 text-xs rounded-lg transition-colors " + (orientationFilter === "landscape" ? "bg-indigo-600 text-white border border-indigo-500" : "bg-gray-800/60 text-gray-400 hover:text-gray-200 border border-gray-800 hover:border-gray-600")}>
+                    <Monitor className="w-3.5 h-3.5" />
+                    <span>{t('common.landscape')}</span>
+                  </button>
+                  <button onClick={() => { const next = orientationFilter === "portrait" ? "all" : "portrait"; setOrientationFilter(next); useSearchStore.setState({ searchOrientationFilter: next }) }}
+                    className={"inline-flex items-center gap-1 py-1.5 px-3 text-xs rounded-lg transition-colors " + (orientationFilter === "portrait" ? "bg-indigo-600 text-white border border-indigo-500" : "bg-gray-800/60 text-gray-400 hover:text-gray-200 border border-gray-800 hover:border-gray-600")}>
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>{t('common.portrait')}</span>
+                  </button>
+                 </div>
+               </div>
+             )}
+              {!searchQuery && searchResults.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm text-gray-400">
-                    {t('searchPage.searchLabel')} "<span className="text-gray-200">{searchQuery}</span>" — {formatCount(searchTotal)} {t('searchPage.resultUnit')}
+                  <p className="text-sm text-gray-400 tabular-nums">
+                   {formatCount(searchTotal)} {t('searchPage.resultUnit')}
                   </p>
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {FILTER_OPTIONS.map((opt) => {
                       const count = sourceStats[opt.key]
                       const isActive = sourceFilter === opt.key
                       return (
-                        <button key={opt.key} onClick={() => setSourceFilter(opt.key)}
+                        <button key={opt.key} onClick={() => { setSourceFilter(opt.key); useSearchStore.setState({ searchSourceFilter: opt.key }) }}
                           className={"inline-flex items-center gap-1 py-1.5 px-3 text-xs rounded-lg transition-colors " + (isActive ? "bg-gray-700 text-white border border-gray-600" : "bg-gray-800/60 text-gray-400 hover:text-gray-200 border border-gray-800 hover:border-gray-600")}>
                           <opt.icon className={"w-3 h-3 " + opt.color} />
                           <span>{sourceLabel(opt.key)}</span>
                           {count > 0 && <span className={"ml-0.5 text-[10px] " + (isActive ? "text-gray-400" : "text-gray-500")}>{count}</span>}
                         </button>
-                      )
+                     )
                     })}
+                   {/* ── Orientation ── */}
+                   <div className="w-px h-5 bg-gray-700 mx-1" />
+                   <button onClick={() => { const next = orientationFilter === "landscape" ? "all" : "landscape"; setOrientationFilter(next); useSearchStore.setState({ searchOrientationFilter: next }) }}
+                     className={"inline-flex items-center gap-1 py-1.5 px-3 text-xs rounded-lg transition-colors " + (orientationFilter === "landscape" ? "bg-indigo-600 text-white border border-indigo-500" : "bg-gray-800/60 text-gray-400 hover:text-gray-200 border border-gray-800 hover:border-gray-600")}>
+                     <Monitor className="w-3.5 h-3.5" />
+                     <span>{t('common.landscape')}</span>
+                   </button>
+                   <button onClick={() => { const next = orientationFilter === "portrait" ? "all" : "portrait"; setOrientationFilter(next); useSearchStore.setState({ searchOrientationFilter: next }) }}
+                     className={"inline-flex items-center gap-1 py-1.5 px-3 text-xs rounded-lg transition-colors " + (orientationFilter === "portrait" ? "bg-indigo-600 text-white border border-indigo-500" : "bg-gray-800/60 text-gray-400 hover:text-gray-200 border border-gray-800 hover:border-gray-600")}>
+                     <Smartphone className="w-3.5 h-3.5" />
+                     <span>{t('common.portrait')}</span>
+                   </button>
                   </div>
                 </div>
               )}
@@ -461,4 +572,3 @@ export function SearchPage() {
     </>
   )
 }
-

@@ -45,7 +45,7 @@ export function AssetGridFilters({ display, heading, countText }: AssetGridFilte
             )}
           </div>
         </div>
-        <div className="absolute left-1/2 -translate-x-1/2">
+        <div className="absolute left-1/2 -translate-x-1/2 w-80 max-w-full">
           <SearchBar compact />
         </div>
         <div className="flex items-center gap-2 ml-auto">

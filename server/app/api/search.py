@@ -16,6 +16,7 @@ from ..schemas.search import SearchQuery
 from ..core.search_engine import search_assets, search_transcripts
 
 from sqlalchemy import select as sa_select
+from sqlalchemy import func
 from ..models.ai_engine_job import AIEngineJob
 
 logger = logging.getLogger(__name__)
@@ -149,20 +150,27 @@ async def smart_search(
     tags: str = Query(""),
     min_duration: float | None = Query(None),
     max_duration: float | None = Query(None),
+    min_file_size: int | None = Query(None),
+    max_file_size: int | None = Query(None),
     has_audio: bool | None = Query(None),
     sort_by: str = Query("relevance"),
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    session: AsyncSession = Depends(get_session),
+   source_engine: str | None = Query(None),
+    orientation: str = Query(""),
+   session: AsyncSession = Depends(get_session),
 ):
     query = SearchQuery(
         q=q, library_id=library_id,
         include_archived=include_archived,
         tags=tags.split(",") if tags else [],
         min_duration=min_duration, max_duration=max_duration,
+        min_file_size=min_file_size, max_file_size=max_file_size,
         has_audio=has_audio, sort_by=sort_by, sort_order=sort_order,
-        page=page, page_size=page_size,
+       source_engine=source_engine,
+        orientation=orientation,
+       page=page, page_size=page_size,
     )
     assets, total = await search_assets(session, query)
 
@@ -181,8 +189,8 @@ async def smart_search(
         ajobs = (job_dict or {}).get(str(a.id), {})
         scene_st = ajobs.get('scene', 'pending') or ""
         trans_st = ajobs.get('transcript', 'pending') or ""
-        yolo_ok = ajobs.get('yolo', 'pending') == "done"
-        ocr_ok  = ajobs.get('ocr', 'pending') == "done"
+        yolo_ok = ajobs.get('yolo', 'pending') == "completed"
+        ocr_ok  = ajobs.get('ocr', 'pending') == "completed"
         results.append({
             "id": str(a.id), "file_name": a.file_name,
             "duration": a.duration, "thumbnail_path": a.thumbnail_path,
@@ -472,7 +480,124 @@ async def smart_search(
     except Exception as e:
         logger.debug("Batch thumbnail fill error: %s", e)
 
+    # ── File size fill & filter for Phase 2/3 entries (transcript/AI/CLIP fallback) ──
+    if query.min_file_size is not None or query.max_file_size is not None:
+        try:
+            import uuid as _uuid3
+            zero_size = [r for r in results if r.get("file_size", 0) == 0]
+            if zero_size:
+                fs_ids = []
+                for r in zero_size:
+                    try:
+                        fs_ids.append(_uuid3.UUID(r["id"]))
+                    except Exception:
+                        pass
+                if fs_ids:
+                    from ..models.asset import Asset
+                    stmt = sa_select(Asset.id, Asset.file_size).where(Asset.id.in_(fs_ids))
+                    rows = await session.execute(stmt)
+                    fs_map = {str(row[0]): row[1] for row in rows}
+                    for r in results:
+                        real_fs = fs_map.get(r["id"])
+                        if real_fs is not None:
+                            r["file_size"] = real_fs
+            before = len(results)
+            results = [
+                r for r in results
+                if not (query.min_file_size is not None and (r.get("file_size") or 0) < query.min_file_size)
+                and not (query.max_file_size is not None and (r.get("file_size") or 0) > query.max_file_size)
+            ]
+            filtered_out = before - len(results)
+            if filtered_out:
+                logger.debug("File size filter removed %d results from Phase 2/3", filtered_out)
+        except Exception as e:
+            logger.debug("File size fill/filter error: %s", e)
+    # ── Duration filter for Phase 2/3 entries (transcript/AI/CLIP fallback) ──
+    if query.min_duration is not None or query.max_duration is not None:
+        try:
+            import uuid as _uuid4
+            null_dur = [r for r in results if r.get("duration") is None]
+            if null_dur:
+                dur_ids = []
+                for r in null_dur:
+                    try:
+                        dur_ids.append(_uuid4.UUID(r["id"]))
+                    except Exception:
+                        pass
+                if dur_ids:
+                    from ..models.asset import Asset
+                    stmt = sa_select(Asset.id, Asset.duration).where(Asset.id.in_(dur_ids))
+                    rows = await session.execute(stmt)
+                    dur_map = {str(row[0]): row[1] for row in rows}
+                    for r in results:
+                        real_dur = dur_map.get(r["id"])
+                        if real_dur is not None:
+                            r["duration"] = real_dur
+            before = len(results)
+            results = [
+                r for r in results
+                if not (query.min_duration is not None and (r.get("duration") or 0) < query.min_duration)
+                and not (query.max_duration is not None and (r.get("duration") or 0) > query.max_duration)
+            ]
+            filtered_out = before - len(results)
+            if filtered_out:
+                logger.debug("Duration filter removed %d results from Phase 2/3", filtered_out)
+        except Exception as e:
+            logger.debug("Duration fill/filter error: %s", e)
+    # ── Orientation filter for Phase 2/3 entries ──
+    if orientation == "landscape":
+        results = [r for r in results if r.get("width") and r.get("height") and r["width"] > r["height"]]
+    elif orientation == "portrait":
+        results = [r for r in results if r.get("width") and r.get("height") and r["width"] < r["height"]]
     # Sort by score descending
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
-    return {"results": results, "total": len(results)}
+    # total: pure filter uses DB count, text search uses runtime list
+    if q:
+        return_total = len(results)
+    else:
+        return_total = total
+    # ── Compute per-engine completed counts (filter-only mode) ──
+    source_totals = {}
+    if q and results:
+        try:
+            source_totals["scene"] = sum(1 for r in results if r.get("scene_status") == "completed")
+            source_totals["yolo"] = sum(1 for r in results if r.get("has_yolo_tags"))
+            source_totals["ocr"] = sum(1 for r in results if r.get("has_ocr_text"))
+            source_totals["clip"] = sum(1 for r in results if r.get("clip_status") == "completed")
+            source_totals["transcript"] = sum(1 for r in results if r.get("transcript_status") == "completed")
+            source_totals["diarization"] = sum(1 for r in results if r.get("diarization_status") == "completed")
+        except Exception as e:
+            logger.debug('Source totals error: %s', e)
+    elif not q:
+        try:
+            from ..models.asset import Asset
+            asset_filter = sa_select(Asset.id)
+            if not include_archived:
+                asset_filter = asset_filter.where(Asset.is_archived == False)
+            if library_id:
+                asset_filter = asset_filter.where(Asset.library_id == library_id)
+            if min_duration is not None:
+                asset_filter = asset_filter.where(Asset.duration >= min_duration)
+            if max_duration is not None:
+                asset_filter = asset_filter.where(Asset.duration <= max_duration)
+            if min_file_size is not None:
+                asset_filter = asset_filter.where(Asset.file_size >= min_file_size)
+            if max_file_size is not None:
+               asset_filter = asset_filter.where(Asset.file_size <= max_file_size)
+            if orientation == "landscape":
+                asset_filter = asset_filter.where(Asset.width > Asset.height)
+            elif orientation == "portrait":
+                asset_filter = asset_filter.where(Asset.width < Asset.height)
+ 
+            for ename in ['scene','yolo','ocr','clip','transcript','diarization']:
+                cnt = (await session.execute(
+                    sa_select(func.count(AIEngineJob.id))
+                    .where(AIEngineJob.engine_name == ename, AIEngineJob.status == 'completed', AIEngineJob.media_id.in_(asset_filter))
+                )).scalar() or 0
+                source_totals[ename] = cnt
+        except Exception as e:
+            logger.debug('Source totals error: %s', e)
+
+
+    return {"results": results, "total": return_total, "source_totals": source_totals}

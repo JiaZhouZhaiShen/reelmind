@@ -125,13 +125,6 @@ export const Sidebar = memo(function Sidebar() {
          <span className="sl">{t('sidebar.search')}</span>
        </button>
 
-       <button
-         onClick={() => { if (showFavorites) toggleShowFavorites(); navigate('/tags/manage') }}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === '/tags/manage' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
-        >
-          <Tag className="w-4 h-4" />
-          <span className="sl">{t('sidebar.tags')}</span>
-        </button>
 
         <button
           onClick={() => { if (showFavorites) toggleShowFavorites(); navigate('/libraries') }}
@@ -173,6 +166,13 @@ export const Sidebar = memo(function Sidebar() {
           <div className="space-y-1">
             <button onClick={() => { navigate('/admin') }} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === '/admin' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}><BarChart3 className="w-4 h-4" /><span className="sl">{t('admin.dashboard')}</span></button>
             <button onClick={() => { navigate('/ai') }} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === '/ai' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}><Sparkles className="w-4 h-4" /><span className="sl">{t('sidebar.aiEngine')}</span></button>
+           <button
+             onClick={() => { if (showFavorites) toggleShowFavorites(); navigate('/tags/manage') }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === '/tags/manage' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
+            >
+              <Tag className="w-4 h-4" />
+              <span className="sl">{t('sidebar.tags')}</span>
+            </button>
             <button onClick={() => { navigate('/admin/settings') }} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === '/admin/settings' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}><Settings className="w-4 h-4" /><span className="sl">{t('sidebar.settings')}</span></button>
             <button onClick={() => { navigate('/admin/users') }} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === '/admin/users' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}><Users className="w-4 h-4" /><span className="sl">{t('admin.userManagement')}</span></button>
            <button onClick={() => { navigate('/admin/jobs') }} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === '/admin/jobs' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}><Activity className="w-4 h-4" /><span className="sl">{t('admin.jobManagement')}</span></button>

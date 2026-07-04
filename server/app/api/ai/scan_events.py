@@ -67,18 +67,18 @@ def start_event_scanner():
                         OrchestrationEvent.consumed == False,
                     ).order_by(OrchestrationEvent.id).limit(5).all()
                     for event in events:
-                        event.consumed = True
-                        session.commit()
                         data = event.data or {}
                         media_ids = data.get("media_ids", [])
                         batch_id = data.get("batch_id") or str(event.batch_id or "")
                         if not media_ids:
+                            event.consumed = True
                             continue
                         auto_config = get_auto_config()
                         if not auto_config.get("enabled", False):
+                            event.consumed = True
                             logger.info(
-                                "Event scanner: auto mode disabled, skipping chunk batch=%s media_ids=%d",
-                                batch_id, len(media_ids),
+                                "Event scanner: auto mode disabled, consuming event %s",
+                                event.id,
                             )
                             continue
                         logger.info(
@@ -87,9 +87,10 @@ def start_event_scanner():
                         )
                         threading.Thread(
                             target=_orchestrate_batch,
-                            args=("auto", auto_config, None, media_ids),
+                            args=("auto", auto_config, None, media_ids, event.id),
                             daemon=True,
                         ).start()
+                    session.commit()
                 finally:
                     session.close()
             except Exception:

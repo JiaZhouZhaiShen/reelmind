@@ -42,6 +42,7 @@ export function AssetGrid() {
   const filterTags = useGridStore((s) => s.gridFilterTags)
   const sortOrder = useGridStore((s) => s.gridSortOrder)
   const aiFilter = useGridStore((s) => s.gridAiFilter)
+  const gridOrientationFilter = useGridStore((s) => s.gridOrientationFilter)
   const filtering = useGridStore((s) => s.gridFiltering)
   const filtered = useGridStore((s) => s.gridFiltered)
   const fetchGridAssets = useGridStore((s) => s.fetchGridAssets)
@@ -104,7 +105,7 @@ export function AssetGrid() {
   useEffect(() => {
     useGridStore.getState().resetGridState()
     fetchPage(1, false)
-  }, [fetchPage, showFavorites, selectedLibraryId])
+  }, [fetchPage, showFavorites, selectedLibraryId, gridOrientationFilter, sortOrder, aiFilter])
 
   const loadNext = useCallback(() => {
       const g = useGridStore.getState()

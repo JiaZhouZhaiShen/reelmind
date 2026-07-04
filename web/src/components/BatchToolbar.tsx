@@ -1,6 +1,7 @@
  import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
- import { useAssetStore } from '../stores/asset'
+import { useAssetStore } from '../stores/asset'
+import { useSearchStore } from '../stores/search'
 import { api } from '../api/client'
 
 interface BatchToolbarProps {
@@ -63,12 +64,14 @@ export function BatchToolbar({ currentAssets, onRefresh }: BatchToolbarProps) {
           {t('batchToolbar.download')}
         </button>
         <button
-          onClick={async () => {
-            if (!confirm(t('batchToolbar.deleteConfirm'))) return
-            await api.batchDeleteAssets(selectedAssetIds)
-            clearSelection()
-            onRefresh?.()
-          }}
+         onClick={async () => {
+           if (!confirm(t('batchToolbar.deleteConfirm'))) return
+           await api.batchDeleteAssets(selectedAssetIds)
+           // Immediately remove deleted assets from visible search results
+           useSearchStore.getState().removeResults(selectedAssetIds)
+           clearSelection()
+           onRefresh?.()
+         }}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-700/50"
         >
           {t('batchToolbar.delete')}

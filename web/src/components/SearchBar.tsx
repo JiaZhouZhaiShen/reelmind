@@ -1,34 +1,40 @@
-import { Search, X } from 'lucide-react'
+﻿import { Search, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useSearchStore } from '../stores/search'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
-export function SearchBar({ compact = false }: { compact?: boolean }) {
+ export function SearchBar({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation()
   const storeQuery = useSearchStore((s) => s.searchQuery)
   const [query, setQuery] = useState(storeQuery || '')
 const setSearchQuery = useSearchStore((s) => s.setSearchQuery)
+const searchLoadResults = useSearchStore((s) => s.searchLoadResults)
  const triggerSearch = useSearchStore((s) => s.triggerSearch)
+
 const navigate = useNavigate()
 
 const handleSearch = useCallback((e: React.FormEvent) => {
   e.preventDefault()
- setSearchQuery(query)
-  triggerSearch()
- navigate('/search')
-}, [query, navigate, setSearchQuery, triggerSearch])
+  setSearchQuery(query)
+  if (query) {
+    triggerSearch()
+  } else {
+    searchLoadResults(1, false)
+  }
+  navigate('/search')
+}, [query, navigate, setSearchQuery, triggerSearch, searchLoadResults])
 
  return (
-   <form onSubmit={handleSearch} className={`relative ${compact ? 'w-full max-w-sm' : 'w-full max-w-2xl'}`}>
+     <form onSubmit={handleSearch} className={`relative ${compact ? 'w-full max-w-sm' : 'w-full max-w-2xl'}`}>
      <input
        type="text"
        value={query}
        onChange={(e) => setQuery(e.target.value)}
        placeholder={t('searchBar.placeholder')}
-        className={`w-full bg-gray-800/80 border border-gray-700/80 rounded-l-xl pl-10 pr-8 text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/20 focus:bg-gray-800 transition-all duration-200 ${
+       className={`w-full bg-gray-800/80 border border-gray-700/80 rounded-l-xl pl-10 text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/20 focus:bg-gray-800 transition-all duration-200 ${
          compact ? 'py-1.5 text-sm' : 'py-3 text-base'
-       }`}
+       } ${query ? (compact ? 'pr-16' : 'pr-24') : (compact ? 'pr-12' : 'pr-16')}`}
      />
      {query && (
        <button

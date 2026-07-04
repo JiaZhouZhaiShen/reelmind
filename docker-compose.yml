@@ -80,8 +80,7 @@ services:
     container_name: reelmind-server
     logging: *default-logging
     restart: always
-    ports:
-      - "${PORT_MAP:-0.0.0.0:2588}:${PORT:-2588}"
+    ports: []
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -239,6 +238,33 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+  # nginx reverse proxy (large file zero-copy video)
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: reelmind/nginx:latest
+    container_name: reelmind-nginx
+    logging: *default-logging
+    restart: always
+    ports:
+      - "${PORT_MAP:-0.0.0.0:2588}:2588"
+    volumes:
+      - ${EXTERNAL_MEDIA_DIR:-./media}:/media:ro
+      - nas-media:/nas-media:ro
+      - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind:ro
+      - ./web/dist:/web/dist:ro
+    depends_on:
+      - reelmind-server
+    networks:
+      - reelmind-net
+    deploy:
+      resources:
+        limits:
+          memory: ${NGINX_MEM_LIMIT:-256m}
+        reservations:
+          memory: ${NGINX_MEM_RESERVE:-64M}
+
 networks:
   reelmind-net:
     name: reelmind-network
@@ -247,3 +273,5 @@ networks:
 volumes:
   nas-media:
     external: true
+
+
