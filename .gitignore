@@ -157,3 +157,5 @@ migration_*.sql
 # Backup files
 backups/
 archive/
+# Windows reserved name artifact
+server/NUL

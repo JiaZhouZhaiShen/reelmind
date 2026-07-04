@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Film, Clock, Maximize2, Heart, Archive, RotateCcw, CheckSquare, Square, Monitor, Smartphone, ImagePlay, Text, Tag, ScanEye } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Asset } from '../api/client'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../stores/app'
+import { useAssetStore } from '../stores/asset'
 
 function formatDuration(seconds?: number): string {
   if (!seconds) return '--:--'
@@ -19,14 +20,15 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1e9).toFixed(2)} GB`
 }
 
-export function VideoCard({ assetId, asset: propAsset }: { 
+export const VideoCard = memo(function VideoCard({ assetId, asset: propAsset, bottomSlot }: {
   assetId?: string
   asset?: Asset 
+  bottomSlot?: React.ReactNode
 }) {
   const storeAsset = useStore((s) => assetId ? s.assetsById[assetId] : undefined)
   const asset = propAsset || storeAsset
-  const toggleAssetSelection = useStore((s) => s.toggleAssetSelection)
-  const isSelected = useStore((s) => s.selectedAssetIds.includes(asset?.id ?? ''))
+  const toggleAssetSelection = useAssetStore((s) => s.toggleAssetSelection)
+  const isSelected = useAssetStore((s) => s.selectedAssetIds.includes(asset?.id ?? ''))
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [archived, setArchived] = useState(asset?.is_archived ?? false)
@@ -34,7 +36,7 @@ export function VideoCard({ assetId, asset: propAsset }: {
   if (!asset) {
     return (
       <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-800 animate-pulse">
-        <div className="aspect-video bg-gray-800" style={{ minHeight: 112 }} />
+        <div className="bg-gray-800" style={{ minHeight: 112 }} />
         <div className="p-3 space-y-2">
           <div className="h-3 bg-gray-800 rounded w-3/4" />
           <div className="h-2 bg-gray-800 rounded w-1/2" />
@@ -93,7 +95,7 @@ export function VideoCard({ assetId, asset: propAsset }: {
           <img
             src={thumbSrc}
             alt={asset.file_name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
             loading="lazy"
             onError={() => setThumbError(true)}
           />
@@ -124,7 +126,7 @@ export function VideoCard({ assetId, asset: propAsset }: {
               const showLandscape = hasDbTag ? isLandscape : (w != null && h != null && w > h)
               const showPortrait = hasDbTag ? isPortrait : (w != null && h != null && w < h)
              if (!showLandscape && !showPortrait) return null
-             const label = showLandscape ? '横屏' : '竖屏'
+             const label = showLandscape ? t('common.landscape') : t('common.portrait')
               const cls = 'text-gray-400'
              const Icon = showLandscape ? Monitor : Smartphone
               return (
@@ -143,16 +145,16 @@ export function VideoCard({ assetId, asset: propAsset }: {
           {/* Processing status badges */}
          <div className="flex gap-1">
           {asset.scene_status === 'completed' && (
-              <span title="场景"><ImagePlay className="w-3.5 h-3.5 text-cyan-400" /></span>
+              <span title={t('common.scene')}><ImagePlay className="w-3.5 h-3.5 text-cyan-400" /></span>
            )}
           {asset.transcript_status === 'completed' && (
-              <span title="字幕"><Text className="w-3.5 h-3.5 text-pink-400" /></span>
+              <span title={t('common.subtitle')}><Text className="w-3.5 h-3.5 text-pink-400" /></span>
            )}
            {asset.yolo_status === 'completed' && (
-              <span title="标识"><Tag className="w-3.5 h-3.5 text-amber-300" /></span>
+              <span title={t('common.tagLabel')}><Tag className="w-3.5 h-3.5 text-amber-300" /></span>
            )}
            {asset.ocr_status === 'completed' && (
-              <span title="OCR"><ScanEye className="w-3.5 h-3.5 text-violet-400" /></span>
+              <span title={t('aiEngine.ocr')}><ScanEye className="w-3.5 h-3.5 text-violet-400" /></span>
            )}
          </div>
           <div className="flex gap-1">
@@ -192,9 +194,9 @@ export function VideoCard({ assetId, asset: propAsset }: {
          )}
          {asset.scene_status && asset.scene_status !== "pending" && (
            <span className="ml-auto">
-{asset.scene_status === "completed" && <span className="text-emerald-600 font-medium">已处理</span>}
-             {asset.scene_status === "running" && <span className="text-gray-400 font-medium animate-pulse">处理中</span>}
-             {asset.scene_status === "error" && <span className="text-red-400 font-medium">失败</span>}
+{asset.scene_status === "completed" && <span className="text-emerald-600 font-medium">{t('common.processed')}</span>}
+             {asset.scene_status === "running" && <span className="text-gray-400 font-medium animate-pulse">{t('common.processing')}</span>}
+             {asset.scene_status === "error" && <span className="text-red-400 font-medium">{t('common.failed')}</span>}
             </span>
           )}
        </div>
@@ -207,10 +209,11 @@ export function VideoCard({ assetId, asset: propAsset }: {
             ))}
           </div>
         )}
+          {bottomSlot}
       </div>
     </div>
   )
-}
+});
 
 
 

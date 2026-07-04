@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { formatCount } from "../../utils/format"
-import { useStore } from "../../stores/app"
+import { useAdminStore } from "../../stores/admin"
 import {
   Film, HardDrive, Clock, Users,
   Play, AlertTriangle, RefreshCw, Activity, Monitor
@@ -12,12 +12,11 @@ import { AIModelStatusCard } from "../../components/dashboard/AIModelStatusCard"
 
 export default function AdminDashboardPage() {
   const { t } = useTranslation()
-  const dashboard = useStore((s) => s.adminDashboard)
-  const dashboardError = useStore((s) => s.dashboardError)
-  const loadAdminDashboard = useStore((s) => s.loadAdminDashboard)
-  const systemStatus = useStore((s) => s.systemStatus)
-  const sysStatusLoading = useStore((s) => s.sysStatusLoading)
-  const loadSystemStatus = useStore((s) => s.loadSystemStatus)
+  const dashboard = useAdminStore((s) => s.adminDashboard)
+  const dashboardError = useAdminStore((s) => s.dashboardError)
+  const loadAdminDashboard = useAdminStore((s) => s.loadAdminDashboard)
+  const sysStatusLoading = useAdminStore((s) => s.sysStatusLoading)
+  const loadSystemStatus = useAdminStore((s) => s.loadSystemStatus)
 
   useEffect(() => {
     loadAdminDashboard()
@@ -41,7 +40,7 @@ export default function AdminDashboardPage() {
               onClick={() => { loadAdminDashboard(); loadSystemStatus(); }}
               className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors"
             >
-              点击重试
+              {t("dashboard.retry")}
             </button>
           </div>
         ) : (
@@ -160,13 +159,13 @@ export default function AdminDashboardPage() {
             <Monitor className="w-4 h-4 text-indigo-400" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-gray-200">系统监控</h2>
-            <p className="text-xs text-gray-500">System Monitor — 实时状态 / 每 15 秒刷新</p>
+            <h2 className="text-base font-semibold text-gray-200">{t("dashboard.systemMonitor")}</h2>
+            <p className="text-xs text-gray-500">{t("dashboard.systemMonitorDesc")}</p>
           </div>
           {sysStatusLoading && (
             <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
               <RefreshCw className="w-3 h-3 animate-spin" />
-              检测中
+              {t("dashboard.checking")}
             </div>
           )}
         </div>
@@ -178,8 +177,8 @@ export default function AdminDashboardPage() {
 
         {/* Container + Model — two columns */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-          <ContainerStatusCard name="server" label="SER 容器" icon="server" />
-          <ContainerStatusCard name="ai" label="AI 容器" icon="ai" />
+          <ContainerStatusCard name="server" label={t("dashboard.serverContainer")} icon="server" />
+          <ContainerStatusCard name="ai" label={t("dashboard.aiContainer")} icon="ai" />
           <AIModelStatusCard />
         </div>
       </div>
@@ -191,7 +190,7 @@ export default function AdminDashboardPage() {
           <span className={`relative inline-flex rounded-full h-2 w-2 ${sysStatusLoading ? "bg-yellow-500" : "bg-emerald-500"}`} />
         </span>
         <span className="text-[11px] text-gray-600">
-          {sysStatusLoading ? "连接中..." : "实时监控中"}
+          {sysStatusLoading ? t("dashboard.connecting") : t("dashboard.monitoring")}
         </span>
       </div>
     </div>

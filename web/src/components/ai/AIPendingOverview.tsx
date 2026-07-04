@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { memo } from 'react'
 import {
   BarChart3,
   Scissors,
@@ -63,7 +64,7 @@ const ENGINE_CONFIG = [
   },
 ];
 
-export function AIPendingOverview() {
+export const AIPendingOverview = memo(function AIPendingOverview() {
   const { t } = useTranslation();
   const d = useAIStore((s) => s.pendingCounts);
   const loading = useAIStore((s) => s.pendingLoading);
@@ -288,6 +289,6 @@ export function AIPendingOverview() {
       </div>
     </div>
   );
-}
+});
 
 

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import asyncio
 import datetime as dt_mod
 import json
@@ -15,6 +15,7 @@ import uuid
 from ..config import settings
 from ..core.job_helpers import ENGINES, ENGINE_DEPENDS
 from ..models.ai_engine_job import AIEngineJob
+from ..core import settings_cache as _scache
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +137,22 @@ _global_semaphore: asyncio.Semaphore | None = None
 def _get_semaphore() -> asyncio.Semaphore:
     """Get or create the global ffprobe concurrency semaphore."""
     global _global_semaphore
-    if _global_semaphore is None or _global_semaphore._value != settings.FFPROBE_CONCURRENCY:
-        _global_semaphore = asyncio.Semaphore(settings.FFPROBE_CONCURRENCY)
+    _ffprobe_concurrency = _scache.get_int("ffprobe_concurrency", settings.FFPROBE_CONCURRENCY)
+    if _global_semaphore is None or _global_semaphore._value != _ffprobe_concurrency:
+        _global_semaphore = asyncio.Semaphore(_ffprobe_concurrency)
     return _global_semaphore
+
+
+_thumbnail_semaphore_global: asyncio.Semaphore | None = None
+
+
+def _get_thumbnail_semaphore() -> asyncio.Semaphore:
+    """Get or create the global thumbnail concurrency semaphore."""
+    global _thumbnail_semaphore_global
+    concurrency = _scache.get_int("thumbnail_concurrency", 4)
+    if _thumbnail_semaphore_global is None or _thumbnail_semaphore_global._value != concurrency:
+        _thumbnail_semaphore_global = asyncio.Semaphore(concurrency)
+    return _thumbnail_semaphore_global
 
 
 async def probe_video_async(path: str | Path) -> dict[str, Any]:
@@ -170,13 +184,14 @@ async def probe_video_async(path: str | Path) -> dict[str, Any]:
                 stderr=asyncio.subprocess.PIPE,
             )
             try:
+                _ffprobe_timeout = _scache.get_int("ffprobe_timeout", settings.FFPROBE_TIMEOUT)
                 stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(), timeout=settings.FFPROBE_TIMEOUT
+                    proc.communicate(), timeout=_ffprobe_timeout
                 )
             except asyncio.TimeoutError:
                 proc.kill()
-                logger.error("ffprobe timed out (%ds) for %s", settings.FFPROBE_TIMEOUT, path)
-                raise RuntimeError(f"ffprobe timed out after {settings.FFPROBE_TIMEOUT}s")
+                logger.error("ffprobe timed out (%ds) for %s", _ffprobe_timeout, path)
+                raise RuntimeError(f"ffprobe timed out after {_ffprobe_timeout}s")
 
             if proc.returncode != 0:
                 stderr_text = stderr.decode("utf-8", errors="replace")[:500]
@@ -184,9 +199,9 @@ async def probe_video_async(path: str | Path) -> dict[str, Any]:
                 raise RuntimeError(f"ffprobe failed: {stderr_text}")
 
             data = json.loads(stdout.decode("utf-8"))
-            logger.debug("ffprobe OK for %s — format=%s, streams=%d",
-                         path, data.get("format", {}).get("format_name", "?"),
-                         len(data.get("streams", [])))
+            logger.debug("ffprobe OK for %s 鈥?format=%s, streams=%d",
+                        path, data.get("format", {}).get("format_name", "?"),
+                        len(data.get("streams", [])))
             return data
         except (OSError, json.JSONDecodeError) as e:
             logger.error("ffprobe error for %s: %s", path, e)
@@ -214,16 +229,17 @@ def probe_video(path: str | Path) -> dict[str, Any]:
         str(path),
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=settings.FFPROBE_TIMEOUT)
+        _ffprobe_timeout = _scache.get_int("ffprobe_timeout", settings.FFPROBE_TIMEOUT)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=_ffprobe_timeout)
     except subprocess.TimeoutExpired:
-        logger.error("ffprobe sync timed out (%ds) for %s", settings.FFPROBE_TIMEOUT, path)
-        raise RuntimeError(f"ffprobe timed out after {settings.FFPROBE_TIMEOUT}s")
+        logger.error("ffprobe sync timed out (%ds) for %s", _ffprobe_timeout, path)
+        raise RuntimeError(f"ffprobe timed out after {_ffprobe_timeout}s")
 
     if result.returncode != 0:
         logger.error("ffprobe failed for %s (rc=%d): %s", path, result.returncode, result.stderr[:500])
         raise RuntimeError(f"ffprobe failed: {result.stderr[:500]}")
     data = json.loads(result.stdout)
-    logger.debug("ffprobe OK for %s — format=%s, streams=%d",
+    logger.debug("ffprobe OK for %s 鈥?format=%s, streams=%d",
                  path, data.get("format", {}).get("format_name", "?"),
                  len(data.get("streams", [])))
     return data
@@ -243,7 +259,7 @@ def parse_iso6709(iso6709: str) -> dict[str, float | None] | None:
     lat = float(m.group(1))
     lon = float(m.group(2))
     alt = float(m.group(3)) if m.group(3) else None
-    logger.debug("Parsed ISO6709 → lat=%.4f, lon=%.4f, alt=%s", lat, lon, alt)
+    logger.debug("Parsed ISO6709 鈫?lat=%.4f, lon=%.4f, alt=%s", lat, lon, alt)
     return {"latitude": lat, "longitude": lon, "altitude": alt}
 
 
@@ -395,7 +411,7 @@ def _finalize_metadata(data: dict[str, Any], included_fields: list[str] | None =
 
 
 # =========================================================================
-# Batch async indexer — runs parallel ffprobe with configurable concurrency
+# Batch async indexer 鈥?runs parallel ffprobe with configurable concurrency
 # =========================================================================
 
 async def batch_index_metadata(
@@ -443,7 +459,7 @@ async def batch_index_metadata(
             if progress_callback:
                 progress_callback(stats.success + stats.failed, stats.total)
 
-    # Launch all tasks concurrently — Semaphore limits actual ffprobe processes
+    # Launch all tasks concurrently 鈥?Semaphore limits actual ffprobe processes
     tasks = [_process_one(item) for item in items]
     results = await asyncio.gather(*tasks)
 
@@ -454,14 +470,14 @@ async def batch_index_metadata(
     return results
 
 # ============================================================================
-# IndexingService — class-based, Celery-free, Semaphore-controlled scanner
+# IndexingService 鈥?class-based, Celery-free, Semaphore-controlled scanner
 # ============================================================================
 """
 High-level scanning orchestrator.
 
 Separates file discovery (scanning) from metadata probing (ffprobe).
 Uses asyncio.Semaphore to limit concurrency.
-Publishes progress via Redis pubsub → SSE for real-time frontend updates.
+Publishes progress via Redis pubsub 鈫?SSE for real-time frontend updates.
 """
 
 from ..database import async_session_factory
@@ -479,7 +495,7 @@ class IndexingService:
     Orchestrates a full library scan:
 
     1. Step A (discovery): walks root_path, collects all video file paths.
-       Does NOT call ffprobe — just filesystem iteration.
+       Does NOT call ffprobe 鈥?just filesystem iteration.
     2. Step B (probing): feeds discovered files into a Semaphore-guarded
        async worker pool that calls probe_video_async().
     3. Batch writer: every METADATA_BATCH_SIZE results, issues one bulk
@@ -528,7 +544,7 @@ class IndexingService:
             )
         )
         self._logger.info("Scan started: scan_id=%s library=%s path=%s",
-                          scan_id, library_id, root_path)
+                         scan_id, library_id, root_path)
         return scan_id
 
     async def cancel_scan(self, scan_id: str) -> bool:
@@ -561,7 +577,7 @@ class IndexingService:
         included_fields: list[str] | None,
         job_id: str | None,
     ) -> None:
-        """Step A → Step B → persist pipeline."""
+        """Step A 鈫?Step B 鈫?persist pipeline."""
         cancel = self._cancel_events.get(scan_id)
         if cancel is None:
             return
@@ -594,25 +610,25 @@ class IndexingService:
                     async with async_session_factory() as _chk_sess:
                         _chk_lib = await _chk_sess.get(_LibChk, uuid.UUID(library_id))
                         if _chk_lib and _chk_lib.settings:
-                            _chk_cache = _chk_lib.settings.get("scan_cache")
-                            if _chk_cache:
-                                _chk_mtime = _chk_cache.get("root_mtime_ns")
-                                _chk_count = _chk_cache.get("file_count")
-                                if (_chk_mtime == current_root_mtime
-                                        and _chk_count is not None
-                                        and _chk_lib.total_assets == _chk_count):
-                                    self._logger.info(
-                                        "Scan cache hit - filesystem unchanged for %s "
-                                        "(assets=%d, mtime match)",
-                                        root_path, _chk_lib.total_assets)
-                                    status["stage"] = "completed"
-                                    status["done"] = 0
-                                    status["total"] = 0
-                                    status["elapsed"] = 0.0
-                                    await self._publish_progress(scan_id, status)
-                                    self._cleanup(scan_id)
-                                    self._update_job_status(job_id, "completed", progress=100.0)
-                                    return
+                           _chk_cache = _chk_lib.settings.get("scan_cache")
+                           if _chk_cache:
+                               _chk_mtime = _chk_cache.get("root_mtime_ns")
+                               _chk_count = _chk_cache.get("file_count")
+                               if (_chk_mtime == current_root_mtime
+                                       and _chk_count is not None
+                                       and _chk_lib.total_assets == _chk_count):
+                                   self._logger.info(
+                                       "Scan cache hit - filesystem unchanged for %s "
+                                       "(assets=%d, mtime match)",
+                                       root_path, _chk_lib.total_assets)
+                                   status["stage"] = "completed"
+                                   status["done"] = 0
+                                   status["total"] = 0
+                                   status["elapsed"] = 0.0
+                                   await self._publish_progress(scan_id, status)
+                                   self._cleanup(scan_id)
+                                   self._update_job_status(job_id, "completed", progress=100.0)
+                                   return
             except Exception as _cache_e:
                 self._logger.warning("Scan cache check failed (fallback to full scan): %s", _cache_e)
             discovered = await asyncio.to_thread(
@@ -639,25 +655,25 @@ class IndexingService:
                         from sqlalchemy import select as _Sel, func as _Func
                         from ..models.asset import Asset as _AMod
                         async with async_session_factory() as _uc_sess:
-                            _uc_lib = await _uc_sess.get(_LMod, uuid.UUID(_lib_id))
-                            if _uc_lib:
-                                _uc_cnt = await _uc_sess.scalar(
-                                    _Sel(_Func.count(_AMod.id)).where(
-                                        _AMod.library_id == uuid.UUID(_lib_id)
-                                    )
-                                ) or 0
-                                _uc_stg = dict(_uc_lib.settings or {})
-                                _uc_stg["scan_cache"] = {
-                                    "root_mtime_ns": _mtime,
-                                    "file_count": _uc_cnt,
-                                    "cached_at": dt_mod.datetime.now(
-                                        dt_mod.timezone.utc
-                                    ).isoformat(),
-                                }
-                                _uc_lib.settings = _uc_stg
-                                await _uc_sess.commit()
-                                self._logger.info(
-                                    "Scan cache saved: %d assets, mtime=%s", _uc_cnt, _mtime)
+                           _uc_lib = await _uc_sess.get(_LMod, uuid.UUID(_lib_id))
+                           if _uc_lib:
+                               _uc_cnt = await _uc_sess.scalar(
+                                   _Sel(_Func.count(_AMod.id)).where(
+                                       _AMod.library_id == uuid.UUID(_lib_id)
+                                   )
+                               ) or 0
+                               _uc_stg = dict(_uc_lib.settings or {})
+                               _uc_stg["scan_cache"] = {
+                                   "root_mtime_ns": _mtime,
+                                   "file_count": _uc_cnt,
+                                   "cached_at": dt_mod.datetime.now(
+                                       dt_mod.timezone.utc
+                                   ).isoformat(),
+                               }
+                               _uc_lib.settings = _uc_stg
+                               await _uc_sess.commit()
+                               self._logger.info(
+                                   "Scan cache saved: %d assets, mtime=%s", _uc_cnt, _mtime)
                 except Exception as _uce:
                     self._logger.warning("Failed to update scan cache: %s", _uce)
 
@@ -668,7 +684,7 @@ class IndexingService:
                 async with async_session_factory() as _sess:
                     _rows = await _sess.execute(
                         _sel(_AssetModel.original_path).where(
-                            _AssetModel.library_id == uuid.UUID(library_id)
+                           _AssetModel.library_id == uuid.UUID(library_id)
                         )
                     )
                     _existing = {_row[0] for _row in _rows}
@@ -677,24 +693,24 @@ class IndexingService:
                         _on_disk = {f["path"] for f in discovered}
                         discovered = [f for f in discovered if f["path"] not in _existing]
                         self._logger.info(
-                            "Incremental scan: %d existing skipped, %d new",
-                            _before - len(discovered), len(discovered),
+                           "Incremental scan: %d existing skipped, %d new",
+                           _before - len(discovered), len(discovered),
                         )
 
-                        # Step A.6: Check-out — files in DB but no longer on disk
+                        # Step A.6: Check-out 鈥?files in DB but no longer on disk
                         _gone = _existing - _on_disk
                         if _gone:
-                            from sqlalchemy import delete as _sql_del
-                            _del_result = await _sess.execute(
-                                _sql_del(_AssetModel).where(
-                                    _AssetModel.library_id == uuid.UUID(library_id),
-                                    _AssetModel.original_path.in_(_gone),
-                                )
-                            )
-                            await _sess.commit()
-                            self._logger.info(
-                                "Check-out: %d assets removed (files disappeared from disk)",
-                                _del_result.rowcount)
+                           from sqlalchemy import delete as _sql_del
+                           _del_result = await _sess.execute(
+                               _sql_del(_AssetModel).where(
+                                   _AssetModel.library_id == uuid.UUID(library_id),
+                                   _AssetModel.original_path.in_(_gone),
+                               )
+                           )
+                           await _sess.commit()
+                           self._logger.info(
+                               "Check-out: %d assets removed (files disappeared from disk)",
+                               _del_result.rowcount)
             except Exception as e:
                 self._logger.warning("Incremental / check-out fallback (full scan): %s", e)
 
@@ -714,10 +730,10 @@ class IndexingService:
                 await _update_scan_cache(library_id, Path(root_path))
                 return
 
-            # Step B ― metadata probing with Semaphore control
+            # Step B 鈥?metadata probing with Semaphore control
             sem = _get_semaphore()
-            batch_size = getattr(settings, "METADATA_BATCH_SIZE", 50)
-            probe_timeout = getattr(settings, "FFPROBE_TIMEOUT", 120)
+            batch_size = _scache.get_int("metadata_batch_size", settings.METADATA_BATCH_SIZE)
+            probe_timeout = _scache.get_int("ffprobe_timeout", settings.FFPROBE_TIMEOUT)
 
             probe_results: list[dict] = []
 
@@ -840,11 +856,7 @@ class IndexingService:
     ) -> bool:
         """Check if file extension is a supported video format."""
         # Use a local copy of supported extensions
-        default_extensions = getattr(settings, "SUPPORTED_VIDEO_EXTENSIONS", {
-            ".mp4", ".mov", ".avi", ".mkv", ".webm",
-            ".m4v", ".wmv", ".flv", ".ts", ".mts",
-            ".m2ts", ".3gp", ".ogv", ".mxf",
-        })
+        default_extensions = _scache.get_video_extensions()
 
         if excluded_extensions and suffix in excluded_extensions:
             return False
@@ -882,10 +894,10 @@ class IndexingService:
                     _exif = parsed.get("exif", {})
                     if _exif.get("camera"):
                         for _k, _v in _exif["camera"].items():
-                            meta["camera_" + _k] = str(_v) if not isinstance(_v, str) else _v
+                           meta["camera_" + _k] = str(_v) if not isinstance(_v, str) else _v
                     if _exif.get("gps"):
                         for _k, _v in _exif["gps"].items():
-                            meta["gps_" + _k] = _v
+                           meta["gps_" + _k] = _v
                     meta["path"] = path
                     meta["file_size"] = item.get("size", 0)
                     if included_fields:
@@ -920,35 +932,35 @@ class IndexingService:
                     # Build the UPSERT
                     stmt = (
                         _sql_text("""
-                            INSERT INTO assets (
-                                id, library_id, original_path, file_name, file_size,
-                                width, height, duration, fps, codec,
-                                video_bitrate, audio_codec, audio_channels, has_audio,
-                                media_date, mime_type, exif, custom_metadata,
-                                created_at, updated_at
-                            ) VALUES (
-                                :id, :library_id, :original_path, :file_name, :file_size,
-                                :width, :height, :duration, :fps, :codec,
-                                :video_bitrate, :audio_codec, :audio_channels, :has_audio,
-                                :media_date, :mime_type, :exif, :custom_metadata,
-                                NOW(), NOW()
-                            )
-                            ON CONFLICT (original_path)
-                            DO UPDATE SET
-                                width = EXCLUDED.width,
-                                height = EXCLUDED.height,
-                                duration = EXCLUDED.duration,
-                                fps = EXCLUDED.fps,
-                                codec = EXCLUDED.codec,
-                                video_bitrate = EXCLUDED.video_bitrate,
-                                audio_codec = EXCLUDED.audio_codec,
-                                audio_channels = EXCLUDED.audio_channels,
-                                has_audio = EXCLUDED.has_audio,
-                                media_date = EXCLUDED.media_date,
-                                mime_type = EXCLUDED.mime_type,
-                                exif = EXCLUDED.exif,
-                                custom_metadata = EXCLUDED.custom_metadata,
-                                updated_at = NOW()
+                           INSERT INTO assets (
+                               id, library_id, original_path, file_name, file_size,
+                               width, height, duration, fps, codec,
+                               video_bitrate, audio_codec, audio_channels, has_audio,
+                               media_date, mime_type, exif, custom_metadata,
+                               created_at, updated_at
+                           ) VALUES (
+                               :id, :library_id, :original_path, :file_name, :file_size,
+                               :width, :height, :duration, :fps, :codec,
+                               :video_bitrate, :audio_codec, :audio_channels, :has_audio,
+                               :media_date, :mime_type, :exif, :custom_metadata,
+                               NOW(), NOW()
+                           )
+                            ON CONFLICT (library_id, original_path)
+                           DO UPDATE SET
+                               width = EXCLUDED.width,
+                               height = EXCLUDED.height,
+                               duration = EXCLUDED.duration,
+                               fps = EXCLUDED.fps,
+                               codec = EXCLUDED.codec,
+                               video_bitrate = EXCLUDED.video_bitrate,
+                               audio_codec = EXCLUDED.audio_codec,
+                               audio_channels = EXCLUDED.audio_channels,
+                               has_audio = EXCLUDED.has_audio,
+                               media_date = EXCLUDED.media_date,
+                               mime_type = EXCLUDED.mime_type,
+                               exif = EXCLUDED.exif,
+                               custom_metadata = EXCLUDED.custom_metadata,
+                               updated_at = NOW()
                         RETURNING id
                         """)
                     )
@@ -957,9 +969,9 @@ class IndexingService:
                     media_date = meta.get("media_date")
                     if media_date and isinstance(media_date, str):
                         try:
-                            media_date = dt_mod.datetime.fromisoformat(media_date)
+                           media_date = dt_mod.datetime.fromisoformat(media_date)
                         except (ValueError, TypeError):
-                            media_date = None
+                           media_date = None
 
                     params = {
                         "id": asset_id,
@@ -978,20 +990,20 @@ class IndexingService:
                         "has_audio": meta.get("has_audio", False),
                         "media_date": media_date,
                         "mime_type": meta.get("mime_type", "video/mp4"),
-                        "exif": _extract_exif(meta) or None,
-                        "custom_metadata": _extract_custom_metadata(meta) or None,
+                        "exif": json.dumps(_extract_exif(meta)) if _extract_exif(meta) else None,
+                        "custom_metadata": json.dumps(_extract_custom_metadata(meta)) if _extract_custom_metadata(meta) else None,
                     }
                     result = await session.execute(stmt, params)
                     row = result.fetchone()
                     if row:
                         created.append((str(row[0]), path))
 
-                # ── Bridge: create AIEngineJob rows for newly-imported assets ──
+                # 鈹€鈹€ Bridge: create AIEngineJob rows for newly-imported assets 鈹€鈹€
                 if created:
                     created_ids = [aid for aid, _ in created]
                     existing_rows = await session.execute(
                         _sql_text(
-                            "SELECT DISTINCT media_id::text FROM ai_engine_jobs WHERE media_id = ANY(:ids)"
+                           "SELECT DISTINCT media_id::text FROM ai_engine_jobs WHERE media_id = ANY(:ids)"
                         ),
                         {"ids": created_ids},
                     )
@@ -999,26 +1011,26 @@ class IndexingService:
                     new_jobs = []
                     for aid, _ in created:
                         if aid not in existing_mids:
-                            for eng in ENGINES:
-                                new_jobs.append({
-                                    "media_id": aid,
-                                    "engine_name": eng,
-                                    "status": "pending",
-                                    "depends_on": list(ENGINE_DEPENDS.get(eng, [])),
-                                })
+                           for eng in ENGINES:
+                               new_jobs.append({
+                                   "media_id": aid,
+                                   "engine_name": eng,
+                                   "status": "pending",
+                                   "depends_on": list(ENGINE_DEPENDS.get(eng, [])),
+                               })
                     if new_jobs:
                         await session.execute(
-                            _sql_text("""
-                                INSERT INTO ai_engine_jobs
-                                    (media_id, engine_name, status, depends_on)
-                                VALUES
-                                    (:media_id, :engine_name, :status, :depends_on::character varying[])
-                            """),
-                            new_jobs,
+                           _sql_text("""
+                               INSERT INTO ai_engine_jobs
+                                   (media_id, engine_name, status, depends_on)
+                               VALUES
+                                   (:media_id, :engine_name, :status, :depends_on)
+                           """),
+                           new_jobs,
                         )
                         self._logger.info(
-                            "_batch_persist: created %d AIEngineJob rows for %d new assets",
-                            len(new_jobs), len(created),
+                           "_batch_persist: created %d AIEngineJob rows for %d new assets",
+                           len(new_jobs), len(created),
                         )
 
                 await session.commit()
@@ -1030,11 +1042,11 @@ class IndexingService:
     # Thumbnail generation (fire-and-forget)
     # ------------------------------------------------------------------
 
-    _thumbnail_semaphore = asyncio.Semaphore(4)
+
 
     async def _generate_thumbnail_task(self, asset_id: str, video_path: str) -> None:
         """Generate thumbnail for a newly inserted asset. Fire-and-forget."""
-        async with self._thumbnail_semaphore:
+        async with _get_thumbnail_semaphore():
             try:
                 from ..core.transcoder import generate_asset_thumbnail
                 loop = asyncio.get_running_loop()
@@ -1214,4 +1226,5 @@ def _extract_custom_metadata(meta: dict) -> dict:
                  "camera_make", "camera_model", "lens_model"}
     skip = basic_keys | exif_keys
     return {k: v for k, v in meta.items() if k not in skip and v is not None}
+
 

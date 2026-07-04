@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Tag, Plus, Trash2, Edit2, Wand2, Search, Loader2, X, Layers, CheckCircle, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
+import { Tag, Plus, Trash2, Edit2, Wand2, Search, Loader2, X, CheckCircle, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
 import { api, type TagInfo } from '../api/client'
 import { useTranslation } from 'react-i18next'
 
@@ -161,7 +161,7 @@ export function TagManager() {
     setSelectedTagIds(new Set())
   }
 
-  const selectAllInCategory = (category: string, catTags: TagInfo[]) => {
+  const selectAllInCategory = (_category: string, catTags: TagInfo[]) => {
     const allSelected = catTags.every((t) => selectedTagIds.has(t.id))
     setSelectedTagIds((prev) => {
       const next = new Set(prev)

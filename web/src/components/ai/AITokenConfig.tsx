@@ -18,7 +18,7 @@ export function AITokenConfig() {
     <div className="bg-gray-900/30 rounded-lg border border-gray-800 p-4">
       <div className="flex items-center gap-2 mb-3">
         <KeyRound className="w-4 h-4 text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">TOKEN 配置</h2>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{t('aiTokenConfig.title')}</h2>
       </div>
       <div>
         <h3 className="text-sm font-medium text-gray-200 mb-3 flex items-center gap-2">

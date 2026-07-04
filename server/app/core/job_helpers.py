@@ -218,3 +218,18 @@ def get_pending_media_ids(session, engines=None, max_file_size_mb=0, max_duratio
         q = q.filter(and_(Asset.duration.isnot(None), Asset.duration > 0, Asset.duration <= max_duration_minutes * 60))
     rows = q.distinct(AIEngineJob.media_id).order_by(AIEngineJob.media_id).all()
     return [str(r[0]) for r in rows]
+
+
+def reset_stale_jobs(
+    session: Session,
+    media_ids: list[str],
+    target_status: str = "pending",
+) -> int:
+    """Batch-reset running jobs for stale checkpoints. Used at startup."""
+    from app.models.ai_engine_job import AIEngineJob
+    count = session.query(AIEngineJob).filter(
+        AIEngineJob.media_id.in_(list(media_ids)),
+        AIEngineJob.status == "running",
+    ).update({"status": target_status})
+    session.commit()
+    return count

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable, Iterator, Optional
 
 from ..config import settings
+from ..core.settings_cache import get_video_extensions as _get_video_extensions
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ def is_video_file(path: Path, custom_extensions: Optional[set[str]] = None, excl
     if excluded_extensions and ext in excluded_extensions:
         return False
     # Base + custom extensions
-    base_extensions = set(settings.SUPPORTED_VIDEO_EXTENSIONS)
+    base_extensions = _get_video_extensions()
     if custom_extensions:
         norm_custom = {e if e.startswith('.') else f'.{e}' for e in custom_extensions}
         base_extensions.update(norm_custom)

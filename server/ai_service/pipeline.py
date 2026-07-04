@@ -53,8 +53,9 @@ def _upsert_job(md, media_id_str: str, engine: str, status: str):
             text("""INSERT INTO ai_engine_jobs (media_id, engine_name, status, depends_on, completed_at)
                      VALUES (:mid, :eng, :st, :deps, NOW())
                      ON CONFLICT (media_id, engine_name)
-                     DO UPDATE SET status = :st2, completed_at = NOW(), error_message = NULL"""),
-            {"mid": media_id_str, "eng": engine, "st": status, "deps": deps, "st2": status},
+                    DO UPDATE SET status = :st2, completed_at = NOW(), 
+                       error_message = CASE WHEN :st2 = 'completed' THEN NULL ELSE ai_engine_jobs.error_message END"""),
+           {"mid": media_id_str, "eng": engine, "st": status, "deps": deps, "st2": status},
         )
         md.commit()
     except Exception:
@@ -101,14 +102,35 @@ def set_pipeline_steps(config: dict):
     from configs import update_from_dict
     update_from_dict(config)
 
+def _get_engine_jobs(media_id: str) -> dict[str, str]:
+    """Query ai_engine_jobs for a media and return {engine_name: status}."""
+    from models.db import get_pg_session
+    from sqlalchemy import text
+    jobs = {}
+    try:
+        s = get_pg_session()
+        try:
+            rows = s.execute(
+                text("SELECT engine_name, status FROM ai_engine_jobs WHERE media_id = :mid"),
+                {"mid": media_id},
+            ).fetchall()
+            for row in rows:
+                jobs[row[0]] = row[1]
+        finally:
+            s.close()
+    except Exception as e:
+        logger.warning("Failed to query engine jobs for %s: %s", media_id, e)
+    return jobs
+
 class AIPipeline:
     """Manages the end-to-end AI processing sequence for a video."""
 
-    def __init__(self, video_id: str, video_path: str, progress_callback: Callable | None = None):
+    def __init__(self, video_id: str, video_path: str, progress_callback: Callable | None = None, engines: list[str] | None = None):
         self.video_id = video_id
         self.video_path = video_path
         self.progress_callback = progress_callback or (lambda msg, pct: None)
         self._session = None
+        self.engines = engines
 
     def _get_session(self):
         if self._session is None:
@@ -163,26 +185,69 @@ class AIPipeline:
                     duration=float(duration or 0),
                     width=width, height=height,
                     fps=float(fps or 0),
-                )
+               )
                 session.add(video)
                 session.commit()
 
+            # Check which engines are already completed (avoid re-processing)
+            engine_statuses = _get_engine_jobs(self.video_id)
+
             # ── Step 1: Scene cut (TransNetV2) ──
-            if (engines is None or "scene" in engines) and scene_cfg.enabled:
+            if engine_statuses.get("scene") == "completed":
+                self._progress("Scene detection already completed, loading existing scenes", 15)
+                existing_scenes = session.query(Scene).filter(
+                    Scene.video_id == self.video_id
+                ).order_by(Scene.scene_index).all()
+                scene_records = list(existing_scenes)
+                self._progress(f"Loaded {len(scene_records)} existing scenes", 20)
+            elif (self.engines is None or "scene" in self.engines) and scene_cfg.enabled:
                 self._progress("Scene detection (TransNetV2)...", 5)
                 _update_model_state("transnet", True)
                 from services.scene_service import detect_scenes, extract_thumbnail
                 scenes_data = detect_scenes(str(video_path))
                 self._progress(f"Found {len(scenes_data)} scenes", 15)
+
+                thumb_dir = Path(os.environ.get("CACHE_ROOT", "cache")) / "scene-thumbnails" / self.video_id
+                thumb_dir.mkdir(parents=True, exist_ok=True)
+
+                scene_records = []
+                if not scenes_data:
+                    import cv2 as _cv2
+                    _cap = _cv2.VideoCapture(str(video_path))
+                    _duration = 0
+                    _fps = _cap.get(_cv2.CAP_PROP_FPS)
+                    _total_frames = int(_cap.get(_cv2.CAP_PROP_FRAME_COUNT))
+                    if _fps > 0:
+                        _duration = _total_frames / _fps
+                    _cap.release()
+                    scene = Scene(
+                        video_id=self.video_id, scene_index=0,
+                        start_time=0, end_time=_duration,
+                    )
+                    session.add(scene)
+                    session.flush()
+                    scene_records = [scene]
+                    self._progress("Using single full-video scene", 20)
+                else:
+                    for sc_idx, sc in enumerate(scenes_data):
+                        scene = Scene(
+                            video_id=self.video_id, scene_index=sc["index"],
+                            start_time=sc["start_time"], end_time=sc["end_time"],
+                        )
+                        thumb_path = thumb_dir / f"scene_{sc['index']:04d}.jpg"
+                        if not thumb_path.exists():
+                            extract_thumbnail(str(video_path), sc["thumbnail_time"], str(thumb_path))
+                        scene.thumbnail_path = str(thumb_path.resolve())
+                        session.add(scene)
+                        session.flush()
+                        scene_records.append(scene)
+
+                session.commit()
+                self._progress(f"Saved {len(scene_records)} scenes", 20)
             else:
                 self._progress("Scene detection skipped", 15)
                 scenes_data = []
 
-            thumb_dir = Path(os.environ.get("CACHE_ROOT", "cache")) / "scene-thumbnails" / self.video_id
-            thumb_dir.mkdir(parents=True, exist_ok=True)
-
-            scene_records = []
-            if not scenes_data:
                 import cv2 as _cv2
                 _cap = _cv2.VideoCapture(str(video_path))
                 _duration = 0
@@ -198,32 +263,20 @@ class AIPipeline:
                 session.add(scene)
                 session.flush()
                 scene_records = [scene]
+                session.commit()
                 self._progress("Using single full-video scene", 20)
-            else:
-                for sc_idx, sc in enumerate(scenes_data):
-                    scene = Scene(
-                        video_id=self.video_id, scene_index=sc["index"],
-                        start_time=sc["start_time"], end_time=sc["end_time"],
-                    )
-                    thumb_path = thumb_dir / f"scene_{sc['index']:04d}.jpg"
-                    if not thumb_path.exists():
-                        extract_thumbnail(str(video_path), sc["thumbnail_time"], str(thumb_path))
-                    scene.thumbnail_path = str(thumb_path.resolve())
-                    session.add(scene)
-                    session.flush()
-                    scene_records.append(scene)
 
-            session.commit()
-            self._progress(f"Saved {len(scene_records)} scenes", 20)
             total_scenes = len(scene_records)
             enabled_steps = []
-            if (engines is None or "yolo" in engines) and yolo_cfg.enabled: enabled_steps.append("yolo")
-            if (engines is None or "ocr" in engines) and ocr_cfg.enabled: enabled_steps.append("ocr")
-            if (engines is None or "clip" in engines) and clip_cfg.enabled: enabled_steps.append("clip")
+            if (self.engines is None or "yolo" in self.engines) and yolo_cfg.enabled: enabled_steps.append("yolo")
+            if (self.engines is None or "ocr" in self.engines) and ocr_cfg.enabled: enabled_steps.append("ocr")
+            if (self.engines is None or "clip" in self.engines) and clip_cfg.enabled: enabled_steps.append("clip")
             step_count = len(enabled_steps) or 1
 
             # ── Step 2: YOLO batch ──
-            if (engines is None or "yolo" in engines) and yolo_cfg.enabled:
+            if engine_statuses.get("yolo") == "completed":
+                self._progress("YOLO already completed, skipping", 20)
+            elif (self.engines is None or "yolo" in self.engines) and yolo_cfg.enabled:
                 self._progress(f"YOLO object detection ({total_scenes} scenes)...", 20)
                 _update_model_state("yolo", True)
                 from services.yolo_service import detect_scene_objects, _unload_yolo
@@ -249,7 +302,9 @@ class AIPipeline:
                 _set_job_status(self.video_id, "yolo", "completed")
 
             # ── Step 3: OCR batch ──
-            if (engines is None or "ocr" in engines) and ocr_cfg.enabled:
+            if engine_statuses.get("ocr") == "completed":
+                self._progress("OCR already completed, skipping", 20)
+            elif (self.engines is None or "ocr" in self.engines) and ocr_cfg.enabled:
                 ocr_start = 20 + (20 / step_count) * enabled_steps.index("ocr")
                 self._progress(f"OCR text recognition ({total_scenes} scenes)...", ocr_start)
                 _update_model_state("ocr", True)
@@ -278,7 +333,10 @@ class AIPipeline:
 
             # ── Step 4: CLIP batch ──
             _clip_ok = False
-            if (engines is None or "clip" in engines) and clip_cfg.enabled:
+            if engine_statuses.get("clip") == "completed":
+                self._progress("CLIP already completed, skipping", 40)
+                _clip_ok = True
+            elif (self.engines is None or "clip" in self.engines) and clip_cfg.enabled:
                 if not os.environ.get('ENABLE_CLIP', 'false') == 'true':
                     self._progress("CLIP disabled by config (ENABLE_CLIP=false)", 40)
                 else:
@@ -320,9 +378,17 @@ class AIPipeline:
 
             self._progress("Scene processing complete", 40)
 
-            # ── Step 5: Audio chain (Whisper -> Diarization) ──
+            # ── Step 5a: Whisper transcription ──
             subtitles_data = []
-            if (engines is None or "transcript" in engines) and whisper_cfg.enabled:
+            if engine_statuses.get("transcript") == "completed":
+                self._progress("Transcription already completed, loading existing subtitles", 80)
+                existing_subs = session.query(Subtitle).filter(
+                    Subtitle.video_id == self.video_id
+                ).order_by(Subtitle.start).all()
+                subtitles_data = [{"start": s.start, "end": s.end, "text": s.text, "language": s.language} for s in existing_subs]
+                if subtitles_data:
+                    self._progress(f"Loaded {len(subtitles_data)} subtitle segments", 87)
+            elif (self.engines is None or "transcript" in self.engines) and whisper_cfg.enabled:
                 if not os.environ.get('ENABLE_WHISPER', 'false') == 'true':
                     self._progress("Whisper disabled by config (ENABLE_WHISPER=false)", 80)
                 else:
@@ -344,38 +410,41 @@ class AIPipeline:
                             session.add(sub_rec)
                         session.commit()
                         self._progress(f"Transcribed {len(subtitles_data)} segments", 87)
-
-                        if (engines is None or "diarization" in engines) and diarization_cfg.enabled:
-                            self._progress("Speaker diarization (pyannote)...", 87)
-                            from services.diarization_service import process as diarize
-                            merged_subs = diarize(str(video_path), subtitles_data)
-                            for sub_data in merged_subs:
-                                if sub_data.get("speaker"):
-                                    existing = session.query(Subtitle).filter(
-                                        Subtitle.video_id == self.video_id,
-                                        Subtitle.start == sub_data["start"],
-                                        Subtitle.end == sub_data["end"],
-                                    ).first()
-                                    if existing:
-                                        existing.speaker = sub_data["speaker"]
-                            session.commit()
-                            speakers = set(s.get("speaker") for s in merged_subs if s.get("speaker"))
-                            self._progress(f"Diarization done: {len(speakers)} speakers found", 95)
-                        else:
-                            self._progress("Speaker diarization skipped", 93)
                     else:
                         self._progress("No speech detected", 87)
             else:
                 self._progress("Transcription skipped", 80)
 
+            # ── Step 5b: Speaker diarization ──
+            if engine_statuses.get("diarization") == "completed":
+                self._progress("Diarization already completed, skipping", 95)
+            elif (self.engines is None or "diarization" in self.engines) and diarization_cfg.enabled and subtitles_data:
+                self._progress("Speaker diarization (pyannote)...", 87)
+                from services.diarization_service import process as diarize
+                merged_subs = diarize(str(video_path), subtitles_data)
+                for sub_data in merged_subs:
+                    if sub_data.get("speaker"):
+                        existing = session.query(Subtitle).filter(
+                            Subtitle.video_id == self.video_id,
+                            Subtitle.start == sub_data["start"],
+                            Subtitle.end == sub_data["end"],
+                        ).first()
+                        if existing:
+                            existing.speaker = sub_data["speaker"]
+                session.commit()
+                speakers = set(s.get("speaker") for s in merged_subs if s.get("speaker"))
+                self._progress(f"Diarization done: {len(speakers)} speakers found", 95)
+            elif subtitles_data:
+                self._progress("Speaker diarization skipped", 93)
+
             # ── Update ai_engine_jobs status ──
-            if (engines is None or "scene" in engines) and scene_cfg.enabled:
+            if (self.engines is None or "scene" in self.engines) and scene_cfg.enabled and engine_statuses.get("scene") != "completed":
                 _set_job_status(self.video_id, "scene", "completed")
-            if whisper_cfg.enabled and os.environ.get('ENABLE_WHISPER', 'false') == 'true':
+            if whisper_cfg.enabled and os.environ.get('ENABLE_WHISPER', 'false') == 'true' and engine_statuses.get("transcript") != "completed":
                 _set_job_status(self.video_id, "transcript", "completed")
-            if clip_cfg.enabled and os.environ.get('ENABLE_CLIP', 'false') == 'true' and _clip_ok:
+            if clip_cfg.enabled and os.environ.get('ENABLE_CLIP', 'false') == 'true' and _clip_ok and engine_statuses.get("clip") != "completed":
                 _set_job_status(self.video_id, "clip", "completed")
-            if diarization_cfg.enabled and subtitles_data:
+            if diarization_cfg.enabled and subtitles_data and engine_statuses.get("diarization") != "completed":
                 _set_job_status(self.video_id, "diarization", "completed")
 
             # ── Generate WebVTT if subtitles were produced ──
@@ -645,9 +714,15 @@ def process_batch(
                             logger.error("YOLO failed for scene %s: %s", scene.id, e)
                 ai_s.close()
             finally:
-                if "yolo" not in _pre_loaded_models:
-                    _unload_yolo()
-                if "yolo" not in _pre_loaded_models: _update_model_state("yolo", False)
+               if "yolo" not in _pre_loaded_models:
+                   _unload_yolo()
+               if "yolo" not in _pre_loaded_models: _update_model_state("yolo", False)
+        # ── Mark YOLO completed for videos that finished processing ──
+        if scenes_no_tag:
+            _yolo_done_vids = set(sc.video_id for sc in scenes_no_tag)
+            for _vid in _yolo_done_vids:
+                if _vid not in _yolo_failed_videos:
+                    _set_job_status(_vid, "yolo", "completed")
         _cb("Step 2/5: YOLO done", 40)
         if _yolo_failed_videos:
             logger.info("YOLO: %d videos failed, marked error", len(_yolo_failed_videos))
@@ -713,9 +788,15 @@ def process_batch(
                             logger.error("OCR failed for scene %s: %s", scene.id, e)
                 ai_s.close()
             finally:
-                if "ocr" not in _pre_loaded_models:
-                    _unload_ocr()
-                if "ocr" not in _pre_loaded_models: _update_model_state("ocr", False)
+               if "ocr" not in _pre_loaded_models:
+                   _unload_ocr()
+               if "ocr" not in _pre_loaded_models: _update_model_state("ocr", False)
+        # ── Mark OCR completed for videos that finished processing ──
+        if scenes_no_ocr:
+            _ocr_done_vids = set(sc.video_id for sc in scenes_no_ocr)
+            for _vid in _ocr_done_vids:
+                if _vid not in _ocr_failed_videos:
+                    _set_job_status(_vid, "ocr", "completed")
         _cb("Step 3/5: OCR done", 60)
         if _ocr_failed_videos:
             logger.info("OCR: %d videos failed, marked error", len(_ocr_failed_videos))
@@ -777,7 +858,7 @@ def process_batch(
                                 ai_s.rollback()
                                 ai_s.close()
                             except Exception:
-                                pass
+                                 pass
                             _clip_failed_videos.add(vid)
                             _set_job_status(str(vid), "clip", "error")
                             failed_video_ids.add(str(vid))
@@ -788,6 +869,11 @@ def process_batch(
                                 )
                             else:
                                 logger.error("CLIP failed for scene %s (video %s): %s", scene.id, vid, e)
+                # ── Mark CLIP completed for videos that finished processing ──
+                _clip_done_vids = set(vid_scenes.keys())
+                for _vid in _clip_done_vids:
+                    if _vid not in _clip_failed_videos:
+                        _set_job_status(_vid, "clip", "completed")
                 _cb("Step 4/5: CLIP done", 80)
                 if _clip_failed_videos:
                     logger.info("CLIP: %d videos failed, marked error", len(_clip_failed_videos))
@@ -886,3 +972,5 @@ def process_batch(
     logger.info("Batch pipeline done: %d completed, %d failed, %d skipped",
         step_results["completed"], step_results["failed"], step_results["skipped"])
     return step_results
+
+

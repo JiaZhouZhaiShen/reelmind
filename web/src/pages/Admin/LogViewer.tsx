@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useLogsStore } from "../../stores/logs"
 import {
   FileText, RefreshCw, ChevronDown, Loader2, Terminal,
@@ -128,6 +129,7 @@ function SourceIcon({ type, status }: { type: string; status: string }) {
 }
 
 export default function LogViewerPage() {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<"browse" | "dashboard">("browse")
   const sources = useLogsStore((s) => s.sources)
   const sourcesLoading = useLogsStore((s) => s.sourcesLoading)
@@ -146,7 +148,6 @@ export default function LogViewerPage() {
 
   const fetchSources = useLogsStore((s) => s.fetchSources)
   const selectSource = useLogsStore((s) => s.selectSource)
-  const fetchLogs = useLogsStore((s) => s.fetchLogs)
   const setLevelFilter = useLogsStore((s) => s.setLevelFilter)
   const setSearchText = useLogsStore((s) => s.setSearchText)
   const applySearch = useLogsStore((s) => s.applySearch)
@@ -198,7 +199,7 @@ export default function LogViewerPage() {
               onClick={() => setActiveTab("browse")}
               className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-white transition-colors"
             >
-              &larr; 返回日志浏览
+              {t("logViewer.backToBrowse")}
             </button>
           </div>
           <ErrorDashboard />
@@ -208,7 +209,7 @@ export default function LogViewerPage() {
       <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-gray-800 bg-gray-900/80">
         <div className="flex items-center gap-2 mr-2">
           <Terminal className="w-4 h-4 text-indigo-400" />
-          <h1 className="text-sm font-bold text-white">日志</h1>
+          <h1 className="text-sm font-bold text-white">{t("logViewer.title")}</h1>
         </div>
 
         <div className="flex items-center gap-0.5">
@@ -248,14 +249,14 @@ export default function LogViewerPage() {
             onKeyDown={handleSearchKeyDown}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
-            placeholder="搜索日志… (Ctrl+K)"
+            placeholder={t("logViewer.searchPlaceholder")}
             disabled={!activeSourceId}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-7 pr-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
           />
           {searchText && (
             <button onClick={applySearch} disabled={!activeSourceId}
               className="absolute right-1 px-1.5 py-0.5 text-[10px] font-medium text-indigo-400 hover:text-indigo-300 bg-gray-700/50 rounded disabled:opacity-40">
-              搜索
+              {t("logViewer.search")}
             </button>
           )}
         </div>
@@ -265,7 +266,7 @@ export default function LogViewerPage() {
         <div className="relative">
           <button onClick={() => setShowTailPicker(!showTailPicker)} disabled={!activeSourceId}
             className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 rounded-md text-xs transition-colors border border-gray-700/50 disabled:opacity-40 disabled:cursor-not-allowed">
-            <span>{tailCount} 条</span>
+            <span>{t("logViewer.linesCount", { count: tailCount })}</span>
             <ChevronDown className="w-3 h-3" />
           </button>
           {showTailPicker && (
@@ -275,7 +276,7 @@ export default function LogViewerPage() {
                 {TAIL_OPTIONS.map((n) => (
                   <button key={n} onClick={() => { setTailCount(n); setShowTailPicker(false) }}
                     className={`flex items-center justify-between w-full text-left px-3 py-1.5 text-xs transition-colors ${tailCount === n ? "text-indigo-400 bg-indigo-900/20" : "text-gray-300 hover:bg-gray-700"}`}>
-                    <span>{n} 条</span>
+                    <span>{t("logViewer.linesCount", { count: n })}</span>
                   </button>
                 ))}
               </div>
@@ -288,24 +289,24 @@ export default function LogViewerPage() {
             onClick={() => setActiveTab("browse")}
             className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded transition-colors ${activeTab === "browse" ? "text-white bg-gray-800" : "text-gray-600 hover:text-gray-300"}`}
           >
-            日志浏览
+            {t("logViewer.browse")}
           </button>
           <button
             onClick={() => setActiveTab("dashboard")}
             className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded transition-colors ${activeTab === "dashboard" ? "text-white bg-gray-800" : "text-gray-600 hover:text-gray-300"}`}
           >
-            错误诊断
+            {t("logViewer.errorDiagnostics")}
           </button>
         <button onClick={toggleAutoRefresh} disabled={!activeSourceId}
           className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors border ${autoRefresh ? "bg-emerald-900/20 text-emerald-400 border-emerald-800/30 hover:bg-emerald-900/30" : "bg-gray-800 text-gray-400 border-gray-700/50 hover:bg-gray-700"} disabled:opacity-40 disabled:cursor-not-allowed`}>
           {autoRefresh ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-          <span>{autoRefresh ? "实时" : "手动"}</span>
+          <span>{autoRefresh ? t("logViewer.modeAuto") : t("logViewer.modeManual")}</span>
         </button>
 
         <button onClick={refresh} disabled={!activeSourceId || logsLoading}
           className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white rounded-md text-xs transition-colors">
           <RefreshCw className={`w-3 h-3 ${logsLoading ? "animate-spin" : ""}`} />
-          <span>刷新</span>
+          <span>{t("logViewer.refresh")}</span>
         </button>
       </div>
 
@@ -313,7 +314,7 @@ export default function LogViewerPage() {
         {/* Left panel */}
         <aside className="w-56 shrink-0 border-r border-gray-800 bg-gray-900/50 flex flex-col overflow-hidden">
           <div className="shrink-0 px-3 py-2 border-b border-gray-800">
-            <span className="text-[11px] font-medium text-gray-500">日志源</span>
+            <span className="text-[11px] font-medium text-gray-500">{t("logViewer.logSource")}</span>
             <span className="text-[10px] text-gray-700 ml-1">({sources.length})</span>
           </div>
 
@@ -327,8 +328,8 @@ export default function LogViewerPage() {
             ) : sources.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-600">
                 <FileText className="w-8 h-8 mb-2 text-gray-700" />
-                <p className="text-xs">没有可用的日志源</p>
-                <p className="text-[10px] text-gray-700 mt-1">启动容器后可查看日志</p>
+                <p className="text-xs">{t("logViewer.noSources")}</p>
+                <p className="text-[10px] text-gray-700 mt-1">{t("logViewer.startContainersHint")}</p>
               </div>
             ) : (
               <>
@@ -336,7 +337,7 @@ export default function LogViewerPage() {
                   <div>
                     <div className={groupTitleStyle}>
                       <Server className="w-3 h-3 inline mr-1" />
-                      容器
+                      {t("logViewer.container")}
                     </div>
                     <div className="space-y-0.5 mt-0.5">
                       {dockerSources.map((src) => (
@@ -345,7 +346,7 @@ export default function LogViewerPage() {
                           <SourceIcon type={src.type} status={src.status} />
                           <div className="flex-1 min-w-0">
                             <div className="text-xs truncate">{src.label}</div>
-                            <div className="text-[10px] text-gray-600">{src.status === "running" ? "运行中" : src.status || "未知"}</div>
+                            <div className="text-[10px] text-gray-600">{src.status === "running" ? t("logViewer.running") : src.status || t("logViewer.unknown")}</div>
                           </div>
                           {src.status === "running" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />}
                         </button>
@@ -356,7 +357,7 @@ export default function LogViewerPage() {
                 {fileSources.length > 0 && (
                   <div>
                     <div className={groupTitleStyle}>
-                      <FileText className="w-3 h-3 inline mr-1" />文件
+                      <FileText className="w-3 h-3 inline mr-1" />{t("logViewer.file")}
                     </div>
                     <div className="space-y-0.5 mt-0.5">
                       {fileSources.map((src) => (
@@ -388,18 +389,18 @@ export default function LogViewerPage() {
                 <>
                   <span className="font-medium text-gray-400">{activeSourceLabel}</span>
                   {logsLoading ? (
-                    <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />加载中…</span>
+                    <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />{t("logViewer.loading")}</span>
                   ) : (
-                    <span>{logs.length} 行{truncated && ` (截断，共 ${totalLines} 行)`}</span>
+                    <span>{t("logViewer.linesCount", { count: logs.length })}{truncated && ` (${totalLines})`}</span>
                   )}
                 </>
               ) : (
-                <span>选择一个日志源开始查看</span>
+                <span>{t("logViewer.selectSource")}</span>
               )}
               {autoRefresh && activeSourceId && (
                 <span className="inline-flex items-center gap-1 text-emerald-500">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  实时
+                  {t("logViewer.modeAuto")}
                 </span>
               )}
             </div>
@@ -409,8 +410,8 @@ export default function LogViewerPage() {
             {!activeSourceId ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-600 select-none">
                 <Terminal className="w-12 h-12 mb-3 text-gray-800" />
-                <p className="text-sm text-gray-500">选择一个日志源</p>
-                <p className="text-xs text-gray-700 mt-1">从左侧选择一个容器或文件</p>
+                <p className="text-sm text-gray-500">{t("logViewer.selectSource")}</p>
+                <p className="text-xs text-gray-700 mt-1">{t("logViewer.selectSourceHint")}</p>
               </div>
             ) : logsLoading && logs.length === 0 ? (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -419,16 +420,16 @@ export default function LogViewerPage() {
             ) : logs.length === 0 ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-600 select-none">
                 <FileText className="w-8 h-8 mb-2 text-gray-800" />
-                <p className="text-xs">该源最近没有日志输出</p>
-                <p className="text-[10px] text-gray-700 mt-1">尝试增加显示行数或切换过滤器</p>
+                <p className="text-xs">{t("logViewer.noRecentLogs")}</p>
+                <p className="text-[10px] text-gray-700 mt-1">{t("logViewer.increaseLinesHint")}</p>
               </div>
             ) : (
               <div ref={viewerRef} className="absolute inset-0 overflow-y-auto font-mono text-xs leading-relaxed">
                 <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800/50 text-[10px] text-gray-600 font-mono select-none">
-                  <span className="w-[70px] text-right">时间</span>
-                  <span className="w-12 text-center">等级</span>
-                  <span className="w-16">来源</span>
-                  <span className="flex-1">消息</span>
+                  <span className="w-[70px] text-right">{t("logViewer.time")}</span>
+                  <span className="w-12 text-center">{t("logViewer.level")}</span>
+                  <span className="w-16">{t("logViewer.source")}</span>
+                  <span className="flex-1">{t("logViewer.message")}</span>
                 </div>
                 <div className="divide-y divide-transparent">
                   {logs.map((entry, idx) => (
@@ -449,41 +450,15 @@ export default function LogViewerPage() {
               <kbd className="px-1 py-0.5 bg-gray-800 rounded text-[10px]">Ctrl</kbd>
               <span>+</span>
               <kbd className="px-1 py-0.5 bg-gray-800 rounded text-[10px]">K</kbd>
-              <span>聚焦搜索</span>
+              <span>{t("logViewer.focusSearch")}</span>
             </span>
-            <span>点击日志行复制</span>
-            <span>Traceback 可展开</span>
+            <span>{t("logViewer.clickToCopy")}</span>
+            <span>{t("logViewer.expandTraceback")}</span>
           </div>
         </div>
       )}
     </div>
   )
-}
-
-interface LogFile {
-  name: string
-  size_bytes: number
-  modified_at: number
-}
-
-interface LogContent {
-  filename: string
-  lines?: string[]
-  content?: string
-  truncated: boolean
-  total_lines?: number
-  total_bytes?: number
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + " B"
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB"
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB"
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts * 1000)
-  return d.toLocaleString()
 }
 
 

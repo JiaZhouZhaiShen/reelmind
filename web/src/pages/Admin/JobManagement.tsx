@@ -9,7 +9,6 @@ import {
 import type { ReactNode } from "react"
 import { formatRelativeTime } from "../../utils/format"
 import { useAdminJobsStore } from "../../stores/adminJobs"
-import type { AdminJob } from "../../api/client"
 
 function SkeletonJobCard() {
   return (
@@ -147,7 +146,7 @@ export default function JobManagementPage() {
          </div>
          <button
            onClick={() => {
-             if (window.confirm('确定要清理旧任务和僵尸任务吗？')) {
+             if (window.confirm('t("jobManagement.cleanupConfirm")')) {
                cleanupJobs()
              }
            }}
@@ -159,7 +158,7 @@ export default function JobManagementPage() {
            ) : (
              <Trash2 className="w-4 h-4" />
            )}
-           清理
+           {t("jobManagement.cleanup")}
          </button>
          <button
             onClick={loadJobs}
@@ -188,7 +187,7 @@ export default function JobManagementPage() {
         {cleanupResult && (
           <div className="mb-6 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-900/20 border border-emerald-800/50 text-sm text-emerald-400">
             <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            <span>清理完成：删除了 {cleanupResult.deleted_old} 条旧记录，标记了 {cleanupResult.marked_stale} 条僵尸任务为失败</span>
+            <span>{t("jobManagement.cleanupResult", { old: cleanupResult.deleted_old, stale: cleanupResult.marked_stale })}</span>
             <button onClick={() => setCleanupResult(null)} className="ml-auto hover:text-emerald-300 transition-colors">
               <XCircle className="w-4 h-4" />
             </button>
@@ -202,7 +201,7 @@ export default function JobManagementPage() {
               type="text"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              placeholder="搜索任务类型、消息、错误..."
+              placeholder={t("jobManagement.searchPlaceholder")}
               className="w-full bg-gray-800 text-gray-200 rounded-xl pl-10 pr-4 py-2 text-sm border border-gray-700 placeholder-gray-500 focus:outline-none focus:border-indigo-500/60 transition-colors"
             />
           </div>
@@ -297,9 +296,9 @@ export default function JobManagementPage() {
             {filteredJobs.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-gray-500">
                 <Activity className="w-12 h-12 mb-3 text-gray-700" />
-                <p className="text-sm">{searchText ? "没有匹配的任务" : t("admin.noJobs")}</p>
+                <p className="text-sm">{searchText ? t("jobManagement.noMatches") : t("admin.noJobs")}</p>
                 {searchText && (
-                  <p className="text-xs text-gray-500 mt-1">试试其他搜索词，或清除筛选条件</p>
+                  <p className="text-xs text-gray-500 mt-1">{t("jobManagement.searchHint")}</p>
                 )}
               </div>
             )}

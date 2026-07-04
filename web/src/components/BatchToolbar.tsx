@@ -1,5 +1,6 @@
-import { Download } from 'lucide-react'
-import { useStore } from '../stores/app'
+ import { Download } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+ import { useAssetStore } from '../stores/asset'
 import { api } from '../api/client'
 
 interface BatchToolbarProps {
@@ -10,9 +11,10 @@ interface BatchToolbarProps {
 }
 
 export function BatchToolbar({ currentAssets, onRefresh }: BatchToolbarProps) {
-  const selectedAssetIds = useStore((s) => s.selectedAssetIds)
-  const clearSelection = useStore((s) => s.clearSelection)
-  const selectAllAssets = useStore((s) => s.selectAllAssets)
+  const { t } = useTranslation()
+  const selectedAssetIds = useAssetStore((s) => s.selectedAssetIds)
+  const clearSelection = useAssetStore((s) => s.clearSelection)
+  const selectAllAssets = useAssetStore((s) => s.selectAllAssets)
 
   if (selectedAssetIds.length === 0) return null
 
@@ -21,14 +23,14 @@ export function BatchToolbar({ currentAssets, onRefresh }: BatchToolbarProps) {
   return (
     <div className="flex items-center gap-3 mb-4 px-4 py-3 bg-indigo-900/20 border border-indigo-800/30 rounded-lg">
       <span className="text-sm text-indigo-300 font-medium">
-        {selectedAssetIds.length} 已选
+        {t('batchToolbar.selected', { count: selectedAssetIds.length })}
         {allSelected ? (
           <button onClick={() => clearSelection()} className="ml-2 text-xs font-medium text-indigo-400 hover:text-indigo-300 underline">
-            取消全选
+            {t('batchToolbar.deselectAll')}
           </button>
         ) : (
           <button onClick={() => selectAllAssets(currentAssets.map((a) => a.id))} className="ml-2 text-xs font-medium text-indigo-400 hover:text-indigo-300 underline">
-            全选当前页 ({currentAssets.length})
+            {t('batchToolbar.selectPage', { count: currentAssets.length })}
           </button>
         )}
       </span>
@@ -41,7 +43,7 @@ export function BatchToolbar({ currentAssets, onRefresh }: BatchToolbarProps) {
           }}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-700/50"
         >
-          收藏
+          {t('batchToolbar.favorite')}
         </button>
         <button
           onClick={async () => {
@@ -51,25 +53,25 @@ export function BatchToolbar({ currentAssets, onRefresh }: BatchToolbarProps) {
           }}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-700/50"
         >
-          取消收藏
+          {t('batchToolbar.unfavorite')}
         </button>
         <button
           onClick={() => api.downloadSelectedAssets(selectedAssetIds)}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-700/50 flex items-center gap-1"
         >
           <Download className="w-3.5 h-3.5" />
-          下载
+          {t('batchToolbar.download')}
         </button>
         <button
           onClick={async () => {
-            if (!confirm('确定删除?')) return
+            if (!confirm(t('batchToolbar.deleteConfirm'))) return
             await api.batchDeleteAssets(selectedAssetIds)
             clearSelection()
             onRefresh?.()
           }}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-700/50"
         >
-          删除
+          {t('batchToolbar.delete')}
         </button>
         <button
           onClick={async () => {
@@ -79,7 +81,7 @@ export function BatchToolbar({ currentAssets, onRefresh }: BatchToolbarProps) {
           }}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-700/50"
         >
-          取消归档
+          {t('batchToolbar.unarchive')}
         </button>
         <button
           onClick={async () => {
@@ -89,24 +91,24 @@ export function BatchToolbar({ currentAssets, onRefresh }: BatchToolbarProps) {
           }}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-700/50"
         >
-          归档
+          {t('batchToolbar.archive')}
         </button>
         <button
          onClick={() => clearSelection()}
          className="px-3 py-1.5 text-xs font-medium rounded-lg text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600"
        >
-         清除
+          {t('batchToolbar.clear')}
        </button>
         <button
           onClick={async () => {
-            if (!confirm(`确定重置 ${selectedAssetIds.length} 个视频的AI处理数据？`)) return
+            if (!confirm(t('batchToolbar.resetAIConfirm', { count: selectedAssetIds.length }))) return
             await api.batchResetAssetAI(selectedAssetIds)
             clearSelection()
             onRefresh?.()
           }}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-700/50"
         >
-          重置AI
+          {t('batchToolbar.resetAI')}
         </button>
       </div>
     </div>

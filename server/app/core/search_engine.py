@@ -41,9 +41,14 @@ async def search_assets(
     if query.min_duration is not None:
         stmt = stmt.where(Asset.duration >= query.min_duration)
     if query.max_duration is not None:
-        stmt = stmt.where(Asset.duration <= query.max_duration)
+       stmt = stmt.where(Asset.duration <= query.max_duration)
 
-    # audio filter
+    if query.min_file_size is not None:
+        stmt = stmt.where(Asset.file_size >= query.min_file_size)
+    if query.max_file_size is not None:
+        stmt = stmt.where(Asset.file_size <= query.max_file_size)
+
+   # audio filter
     if query.has_audio is not None:
         stmt = stmt.where(Asset.has_audio == query.has_audio)
 

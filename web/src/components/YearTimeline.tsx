@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react"
+import { useGridStore } from '../stores/grid'
 
 interface YearTimelineProps {
-  years: Array<{ year: number; count: number }>
   activeYear: number | null
   activeDayKey: string | null
   onYearClick: (year: number) => void
@@ -9,12 +9,12 @@ interface YearTimelineProps {
 }
 
 export function YearTimeline({
-  years,
   activeYear,
   activeDayKey,
   onYearClick,
   onDayClick,
 }: YearTimelineProps) {
+  const years = useGridStore(s => s.gridTimelineYears)
   const activeItemRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

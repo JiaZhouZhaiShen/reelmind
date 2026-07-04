@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react'
 import { LogIn, UserPlus, Eye, EyeOff, AlertCircle } from 'lucide-react'
-import { useStore } from '../stores/app'
+import { useAuthStore } from '../stores/auth'
 import { useTranslation } from 'react-i18next'
 
 export default function LoginPage() {
@@ -12,8 +12,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const login = useStore((s) => s.login)
-  const register = useStore((s) => s.register)
+  const login = useAuthStore((s) => s.login)
+  const register = useAuthStore((s) => s.register)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -39,7 +39,7 @@ export default function LoginPage() {
        <div className="text-center mb-8">
           <img src="/logo.png" alt="ReelMind" className="inline-block w-14 h-14 rounded-xl mb-4 object-cover" />
          <h1 className="text-2xl font-bold text-white tracking-tight">ReelMind</h1>
-         <p className="text-sm text-gray-500 mt-1">嘉州宅神 · Jiazhou Hermit</p>
+         <p className="text-sm text-gray-500 mt-1">{t('login.title')}</p>
           <p className="text-[11px] text-indigo-400/70 font-mono font-medium mt-2">v{__APP_VERSION__}</p>
        </div>
 

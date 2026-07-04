@@ -34,10 +34,16 @@ async def lifespan(app: FastAPI):
     await init_db()
     _logger.info("Database initialised - %s", settings.DATABASE_URL.replace(settings.DB_PASSWORD, "****"))
 
+    # Load system settings into in-memory cache
+    from .core import settings_cache as _settings_cache
+    await _settings_cache.load_all()
+    _logger.info("System settings cache loaded")
+
     # Check for interrupted batch checkpoints (server restart recovery)
     try:
         from app.database import sync_session_factory
         from app.models.batch_checkpoint import BatchCheckpoint
+        from app.core.job_helpers import reset_stale_jobs
         from datetime import datetime, timedelta, timezone
         session = sync_session_factory()
         running_cps = session.query(BatchCheckpoint).filter(
@@ -47,8 +53,19 @@ async def lifespan(app: FastAPI):
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
         for cp in running_cps:
             if cp.created_at and cp.created_at < cutoff and cp.processed < cp.total_videos:
+                chunk_ids = cp.current_chunk_ids or []
+                if chunk_ids:
+                    try:
+                        job_reset_count = reset_stale_jobs(session, chunk_ids)
+                    except Exception:
+                        _logger.exception("Failed to reset engine jobs for stale checkpoint %s", cp.id)
                 cp.status = "failed"
                 stale_count += 1
+        if job_reset_count > 0:
+            _logger.warning(
+                "Reset %d stuck running engine jobs back to pending for %d stale checkpoint(s)",
+                job_reset_count, stale_count,
+            )
         session.commit()
         if stale_count > 0:
             _logger.warning("Auto-marked %d stale running checkpoints as failed", stale_count)
@@ -123,14 +140,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from .api import assets, libraries, search, preview, system
+from .api import assets, assets_detail, assets_browse, assets_repair, libraries, search, preview, system
 from .api import auth
 from .api import tags
 from .api import admin_logs
-from .api import admin
+from .api import admin, admin_jobs, admin_users, admin_extras
 from .api import ai
 from .api import scan
 app.include_router(assets.router, prefix=settings.API_PREFIX)
+app.include_router(assets_browse.router, prefix=settings.API_PREFIX)
+app.include_router(assets_detail.router, prefix=settings.API_PREFIX)
+app.include_router(assets_repair.router, prefix=settings.API_PREFIX)
 app.include_router(libraries.router, prefix=settings.API_PREFIX)
 app.include_router(search.router, prefix=settings.API_PREFIX)
 app.include_router(preview.router, prefix=settings.API_PREFIX)
@@ -139,6 +159,9 @@ app.include_router(auth.router, prefix=settings.API_PREFIX)
 app.include_router(tags.router, prefix=settings.API_PREFIX)
 app.include_router(admin_logs.router, prefix=settings.API_PREFIX)
 app.include_router(admin.router, prefix=settings.API_PREFIX)
+app.include_router(admin_jobs.router, prefix=settings.API_PREFIX)
+app.include_router(admin_users.router, prefix=settings.API_PREFIX)
+app.include_router(admin_extras.router, prefix=settings.API_PREFIX)
 app.include_router(ai.router, prefix=settings.API_PREFIX)
 app.include_router(scan.router, prefix=settings.API_PREFIX)
 

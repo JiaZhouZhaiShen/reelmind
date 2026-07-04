@@ -1,5 +1,65 @@
 import { request } from './base';
-import type { Library, Asset, SearchResult } from './client';
+import type { Library } from './system';
+
+export interface Asset {
+  id: string;
+  library_id: string;
+  original_path: string;
+  file_name: string;
+  file_size: number;
+  file_hash?: string;
+  mime_type?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  fps?: number;
+  codec?: string;
+  audio_codec?: string;
+  has_audio: boolean;
+  thumbnail_path?: string;
+  proxy_path?: string;
+  transcript_status: string;
+  clip_status: string;
+  scene_status: string;
+  yolo_status: string;
+  ocr_status: string;
+  diarization_status: string;
+  has_yolo_tags?: boolean;
+  has_ocr_text?: boolean;
+  is_imported: boolean;
+  is_archived: boolean;
+  is_favorite: boolean;
+  notes?: string;
+  media_date?: string;
+  created_at: string;
+  updated_at: string;
+  tags: string[];
+  exif?: Record<string, unknown> | null;
+  custom_metadata?: Record<string, unknown> | null;
+}
+export interface SearchResult {
+  id: string;
+  file_name: string;
+  duration?: number;
+  thumbnail_path?: string;
+  media_date?: string;
+  file_size: number;
+  codec?: string;
+  width?: number;
+  height?: number;
+  is_favorite: boolean;
+  is_archived: boolean;
+  match_type: string;
+  score: number;
+  match_sources: string[];
+  matches: Array<{source: string; snippet: string; time_sec: number}>;
+  scene_status: string;
+  clip_status: string;
+  transcript_status: string;
+  diarization_status: string;
+  has_yolo_tags: boolean;
+  has_ocr_text: boolean;
+}
 
 // ── Libraries ──
 export function listLibraries(): Promise<Library[]> {
@@ -83,7 +143,7 @@ export function batchTagAssets(assetIds: string[], tagIds: string[], action: 'ad
 }
 
 // ── Search ──
-export function smartSearch(params: { q?: string; library_id?: string; tags?: string; min_duration?: number; max_duration?: number; has_audio?: boolean; sort_by?: string; sort_order?: string; page?: number; page_size?: number; include_archived?: boolean }): Promise<{ results: SearchResult[]; total: number }> {
+export function smartSearch(params: { q?: string; library_id?: string; tags?: string; min_duration?: number; max_duration?: number; min_file_size?: number; max_file_size?: number; has_audio?: boolean; sort_by?: string; sort_order?: string; page?: number; page_size?: number; include_archived?: boolean }): Promise<{ results: SearchResult[]; total: number }> {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') sp.set(k, String(v)); });
   if (!sp.has('include_archived')) sp.set('include_archived', 'false');

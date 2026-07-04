@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Tags, Tag, Layers, Film, Loader2, ArrowLeft, Grid3X3, Hash, Monitor, Smartphone, Download
+  Tags, Tag, Layers, Film, Loader2, ArrowLeft, Grid3X3, Monitor, Smartphone
 } from 'lucide-react'
 import { api, type Asset } from '../api/client'
+import { useTagStore } from '../stores/tag'
 import { VideoCard } from '../components/VideoCard'
 import { BatchToolbar } from '../components/BatchToolbar'
 import { useTranslation } from 'react-i18next'
@@ -32,11 +33,6 @@ function getOrientation(w?: number, h?: number): 'landscape' | 'portrait' | 'squ
   if (w === h) return 'square'
   return w > h ? 'landscape' : 'portrait'
 }
-interface TagCategory {
-  category: string
-  count: number
-}
-
 interface TagEntry {
   id: string
   name: string
@@ -50,9 +46,9 @@ type ViewState = 'categories' | 'tags' | 'categoryTags' | 'assets'
 export function TagBrowse() {
   const { t } = useTranslation()
   const [view, setView] = useState<ViewState>('categories')
-  const [categories, setCategories] = useState<TagCategory[]>([])
-  const [tags, setTags] = useState<TagEntry[]>([])
-  const [allTags, setAllTags] = useState<TagEntry[]>([])
+  const categories = useTagStore(s => s.tagCategories)
+  const tags = useTagStore(s => s.tagEntries)
+  const allTags = useTagStore(s => s.tagAllEntries)
   const [assets, setAssets] = useState<Asset[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -63,25 +59,10 @@ export function TagBrowse() {
 
   useMarqueeSelection(scrollRef)
 
-  const loadCategories = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await api.listTagCategories()
-      setCategories(data)
-      setView('categories')
-    } catch (e) {
-      console.error('Failed to load categories:', e)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   const loadAllTags = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.listTags()
-      setAllTags(data)
-      api.listTagCategories().then(c => setCategories(c)).catch(() => {})
+      await useTagStore.getState().loadTagAllEntries()
       setView('tags')
     } catch (e) {
       console.error('Failed to load tags:', e)
@@ -94,8 +75,7 @@ export function TagBrowse() {
     setLoading(true)
     setSelectedCategory(category)
     try {
-      const data = await api.listTags(category)
-      setTags(data)
+      await useTagStore.getState().loadTagEntries(category)
       setView('categoryTags')
     } catch (e) {
       console.error('Failed to load tags:', e)
@@ -189,60 +169,59 @@ export function TagBrowse() {
   const urlTag = searchParams.get('tag')
 
   useEffect(() => {
-    if (urlTag) {
-      setLoading(true)
-      api.listTags().then((allTags) => {
-        const foundTag = allTags.find((t) => t.name === urlTag)
-        if (foundTag) {
-          setAllTags(allTags)
-          setSelectedCategory(foundTag.category)
-          setSelectedTags([urlTag])
-          return api.smartSearch({ tags: urlTag, page_size: 100 }).then((result) => {
-            setAssets(result.results.map((r) => ({
-              id: r.id,
-              file_name: r.file_name,
-              duration: r.duration,
-              thumbnail_path: r.thumbnail_path,
-              library_id: '',
-              original_path: '',
-              file_size: 0,
-              mime_type: undefined,
-              width: undefined,
-              height: undefined,
-              fps: undefined,
-              codec: undefined,
-              audio_codec: undefined,
-              has_audio: false,
-              proxy_path: undefined,
-              transcript_status: '',
-              clip_status: '',
-              scene_status: '',
-              is_imported: false,
-              is_archived: false,
-              is_favorite: false,
-              notes: undefined,
-              file_hash: undefined,
-              created_at: '',
-              updated_at: '',
-              tags: [],
-            } as unknown as Asset)))
-            setAssetCount(result.total)
-            setView('assets')
-            setLoading(false)
-          })
-        } else {
-          setAllTags(allTags)
-          setLoading(false)
-          setView('tags')
-        }
-      }).catch(() => {
-        setLoading(false)
-        loadAllTags()
-      })
-    } else {
-      loadAllTags()
-    }
-  }, [urlTag])
+   if (urlTag) {
+     setLoading(true)
+      useTagStore.getState().loadTagAllEntries().then(() => {
+        const allTags = useTagStore.getState().tagAllEntries
+      const foundTag = allTags.find((t) => t.name === urlTag)
+      if (foundTag) {
+        setSelectedCategory(foundTag.category)
+         setSelectedTags([urlTag])
+         return api.smartSearch({ tags: urlTag, page_size: 100 }).then((result) => {
+           setAssets(result.results.map((r) => ({
+             id: r.id,
+             file_name: r.file_name,
+             duration: r.duration,
+             thumbnail_path: r.thumbnail_path,
+             library_id: '',
+             original_path: '',
+             file_size: 0,
+             mime_type: undefined,
+             width: undefined,
+             height: undefined,
+             fps: undefined,
+             codec: undefined,
+             audio_codec: undefined,
+             has_audio: false,
+             proxy_path: undefined,
+             transcript_status: '',
+             clip_status: '',
+             scene_status: '',
+             is_imported: false,
+             is_archived: false,
+             is_favorite: false,
+             notes: undefined,
+             file_hash: undefined,
+             created_at: '',
+             updated_at: '',
+             tags: [],
+           } as unknown as Asset)))
+           setAssetCount(result.total)
+           setView('assets')
+           setLoading(false)
+         })
+       } else {
+         setLoading(false)
+         setView('tags')
+       }
+     }).catch(() => {
+       setLoading(false)
+       loadAllTags()
+     })
+   } else {
+     loadAllTags()
+   }
+ }, [urlTag])
 
   // Group tags by category
   const groupedTags = allTags.reduce<Record<string, TagEntry[]>>((acc, tag) => {
@@ -263,7 +242,7 @@ export function TagBrowse() {
         )}
         {view === 'tags' && categories.length > 0 && (
           <button
-            onClick={() => { api.listTagCategories().then(setCategories).catch(() => {}); setView('categories') }}
+            onClick={() => { useTagStore.getState().loadTagCategories().catch(() => {}); setView('categories') }}
             className="ml-auto flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-400 transition-colors"
             title="View by category grid"
           >
@@ -437,7 +416,7 @@ export function TagBrowse() {
                   : 'bg-gray-800 text-gray-400 hover:text-gray-200')
               }
             >
-              全部
+              {t('common.all')}
             </button>
             <button
               onClick={() => setOrientationFilter('landscape')}
@@ -449,7 +428,7 @@ export function TagBrowse() {
               }
             >
               <Monitor className="w-3.5 h-3.5" />
-              横屏
+              {t('common.landscape')}
             </button>
             <button
               onClick={() => setOrientationFilter('portrait')}
@@ -461,7 +440,7 @@ export function TagBrowse() {
               }
             >
               <Smartphone className="w-3.5 h-3.5" />
-              竖屏
+              {t('common.portrait')}
             </button>
           </div>
           {/* Selected tag chips */}

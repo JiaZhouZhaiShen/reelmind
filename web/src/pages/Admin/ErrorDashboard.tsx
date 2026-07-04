@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import {
   RefreshCw, AlertTriangle, Activity, Server,
   Loader2, Terminal,
@@ -47,6 +48,7 @@ export default function ErrorDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
+  const { t } = useTranslation()
 
   const fetchDiag = useCallback(async () => {
     setLoading(true)
@@ -75,7 +77,7 @@ export default function ErrorDashboard() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="w-6 h-6 text-gray-500 animate-spin" />
-        <span className="ml-2 text-sm text-gray-500">诊断中…</span>
+        <span className="ml-2 text-sm text-gray-500">{t("errorDashboard.diagnosing")}</span>
       </div>
     )
   }
@@ -87,7 +89,7 @@ export default function ErrorDashboard() {
           <AlertTriangle className="w-8 h-8 text-red-400 mx-auto" />
           <p className="text-sm text-red-400 mt-2">{error}</p>
           <button onClick={fetchDiag} className="mt-3 text-xs text-gray-400 hover:text-white underline">
-            重试
+            {t("errorDashboard.retry")}
           </button>
         </div>
       </div>
@@ -99,26 +101,26 @@ export default function ErrorDashboard() {
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2">
           <Activity className="w-4 h-4 text-red-400" />
-          错误诊断
+          {t("errorDashboard.title")}
         </h2>
         <button
           onClick={fetchDiag}
           className="flex items-center gap-1 px-2.5 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
         >
           <RefreshCw className="w-3 h-3" />
-          刷新诊断
+          {t("errorDashboard.refresh")}
         </button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <SmallCard title="错误总数" count={totalErrors} color={totalErrors > 0 ? "red" : "green"} />
-        <SmallCard title="异常容器" count={sourcesWithErrors} color={sourcesWithErrors > 0 ? "amber" : "green"} />
-        <SmallCard title="重复错误模式" count={te.length} color="gray" />
-        <SmallCard title="容器总数" count={Object.keys(ch).length} color="gray" />
+        <SmallCard title={t("errorDashboard.totalErrors")} count={totalErrors} color={totalErrors > 0 ? "red" : "green"} />
+        <SmallCard title={t("errorDashboard.abnormalContainers")} count={sourcesWithErrors} color={sourcesWithErrors > 0 ? "amber" : "green"} />
+        <SmallCard title={t("errorDashboard.duplicatePatterns")} count={te.length} color="gray" />
+        <SmallCard title={t("errorDashboard.totalContainers")} count={Object.keys(ch).length} color="gray" />
       </div>
 
       <div>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">各容器错误数</h3>
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{t("errorDashboard.errorsByContainer")}</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
           {Object.entries(ch).map(([id, status]) => (
             <div key={id} className="rounded-lg border border-gray-800 bg-gray-900/50 p-2.5">
@@ -140,7 +142,7 @@ export default function ErrorDashboard() {
       {te.length > 0 && (
         <div>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-            高频错误 (Top {te.length})
+            {t('errorDashboard.topErrors', { count: te.length })}
           </h3>
           <div className="space-y-1">
             {te.map((item, i) => (
@@ -168,7 +170,7 @@ export default function ErrorDashboard() {
       {re.length > 0 && (
         <div>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-            最近错误 ({re.length})
+            {t('errorDashboard.recentErrors', { count: re.length })}
           </h3>
           <div className="space-y-0.5 font-mono text-xs">
             {re.map((err, i) => (
@@ -188,8 +190,8 @@ export default function ErrorDashboard() {
       {totalErrors === 0 && te.length === 0 && re.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12">
           <Terminal className="w-10 h-10 text-emerald-500/50" />
-          <p className="text-sm text-gray-500 mt-3">当前系统无错误日志</p>
-          <p className="text-[10px] text-gray-700 mt-1">所有容器运行正常</p>
+          <p className="text-sm text-gray-500 mt-3">{t("errorDashboard.noErrors")}</p>
+          <p className="text-[10px] text-gray-700 mt-1">{t("errorDashboard.allNormal")}</p>
         </div>
       )}
     </div>

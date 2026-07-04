@@ -4,20 +4,20 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { VideoCard } from '../components/VideoCard'
-import { api } from '../api/client'
 import type { Asset } from '../api/client'
 import { Film, Loader2, ArrowLeft, Image, MessageSquareText, Tag, FileText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAssetStore } from '../stores/asset'
 
 type StatusFilter = 'all' | 'scene' | 'transcript' | 'yolo' | 'ocr'
 
-const FILTER_DEFS: { key: StatusFilter; label: string; icon: typeof Image }[] = [
-  { key: 'all', label: '全部', icon: Film },
-  { key: 'scene', label: '有场景', icon: Image },
-  { key: 'transcript', label: '有字幕', icon: MessageSquareText },
-  { key: 'yolo', label: '有标识', icon: Tag },
-  { key: 'ocr', label: '有OCR', icon: FileText },
+const FILTER_DEFS: { key: StatusFilter; labelKey: string; icon: typeof Image }[] = [
+  { key: 'all', labelKey: 'processedAssets.filterAll', icon: Film },
+  { key: 'scene', labelKey: 'processedAssets.filterScene', icon: Image },
+  { key: 'transcript', labelKey: 'processedAssets.filterTranscript', icon: MessageSquareText },
+  { key: 'yolo', labelKey: 'processedAssets.filterYolo', icon: Tag },
+  { key: 'ocr', labelKey: 'processedAssets.filterOcr', icon: FileText },
 ]
 
 function assetMatchesFilter(asset: Asset, f: StatusFilter): boolean {
@@ -43,21 +43,15 @@ function assetCountForFilter(asset: Asset, f: StatusFilter): boolean {
 export function ProcessedAssets() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [loading, setLoading] = useState(true)
-  const [total, setTotal] = useState(0)
+  const assets = useAssetStore((s) => s.processedAssets)
+  const loading = useAssetStore((s) => s.processedAssetsLoading)
+  const total = useAssetStore((s) => s.processedAssetsTotal)
+  const loadProcessedAssets = useAssetStore((s) => s.loadProcessedAssets)
   const [filter, setFilter] = useState<StatusFilter>('all')
 
   useEffect(() => {
-    setLoading(true)
-    api.getProcessedAssets()
-      .then((res) => {
-        setAssets(res.items)
-        setTotal(res.total)
-      })
-      .catch((e) => console.error('Failed to load processed assets:', e))
-      .finally(() => setLoading(false))
-  }, [])
+    loadProcessedAssets()
+  }, [loadProcessedAssets])
 
   const filteredAssets = useMemo(() => {
     return assets.filter((a) => assetMatchesFilter(a, filter))
@@ -86,7 +80,7 @@ export function ProcessedAssets() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-lg font-semibold text-gray-100">已处理视频</h1>
+            <h1 className="text-lg font-semibold text-gray-100">{t('processedAssets.title')}</h1>
             <p className="text-xs text-gray-500 mt-0.5">
               {t('aiEngine.videosProcessed')}: {total}
             </p>
@@ -109,7 +103,7 @@ export function ProcessedAssets() {
                 }`}
               >
                 <f.icon className="w-3.5 h-3.5" />
-                <span>{f.label}</span>
+                <span>{t(f.labelKey)}</span>
                 <span className={`ml-0.5 text-[10px] ${active ? 'text-indigo-200' : 'text-gray-600'}`}>
                   {count}
                 </span>
@@ -127,7 +121,7 @@ export function ProcessedAssets() {
           <div className="flex flex-col items-center justify-center py-24 text-gray-500">
             <Film className="w-12 h-12 mb-3 text-gray-700" />
             <p className="text-sm">
-              {filter === 'all' ? '暂无已处理的视频' : `当前筛选条件下没有视频`}
+              {filter === 'all' ? t('processedAssets.noProcessedVideos') : t('processedAssets.noFilteredVideos')}
             </p>
           </div>
         ) : (

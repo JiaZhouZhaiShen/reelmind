@@ -1,5 +1,21 @@
 import { request } from './base';
-import type { TagInfo, AssetTagInfo } from './client';
+export interface TagInfo {
+  id: string;
+  name: string;
+  category: string;
+  color?: string;
+  usage_count: number;
+  created_at: string;
+}
+export interface AssetTagInfo {
+  id: string;
+  tag_id: string;
+  tag_name: string;
+  category: string;
+  color?: string;
+  confidence?: number;
+  source: string;
+}
 
 export function listTags(category?: string, search?: string): Promise<TagInfo[]> {
   const params = new URLSearchParams();

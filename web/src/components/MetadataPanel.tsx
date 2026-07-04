@@ -1,17 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Camera, MapPin, Cpu, FileText, ExternalLink } from 'lucide-react'
-import { useStore } from '../stores/app'
-
-interface Asset {
-  id: string
-  original_path?: string
-  media_date?: string
-  created_at?: string
-  updated_at?: string
-  exif?: Record<string, unknown> | null
-  custom_metadata?: Record<string, unknown> | null
-}
+import { useAssetStore } from '../stores/asset'
 
 function CollapsibleSection({
   icon: Icon,
@@ -51,9 +41,9 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-export function MetadataPanel({ assetId }: { assetId: string }) {
+export function MetadataPanel(_props: { assetId: string }) {
   const { t } = useTranslation()
-  const asset = useStore((s) => s.currentAsset)
+  const asset = useAssetStore((s) => s.currentAsset)
   if (!asset) return <div className="text-sm text-gray-500">Loading metadata...</div>
   const exif = asset.exif || {}
   const tech = asset.custom_metadata || {}

@@ -1,5 +1,13 @@
 import { request } from './base';
-import type { AuthResponse, UserInfo } from './client';
+export interface UserInfo {
+  id: string;
+  username: string;
+  role: string;
+}
+export interface AuthResponse {
+  token: string;
+  user: UserInfo;
+}
 
 export function login(username: string, password: string): Promise<AuthResponse> {
   return request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });

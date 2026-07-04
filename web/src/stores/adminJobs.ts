@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api } from '../api/client'
 import type { AdminJob } from '../api/client'
+import i18n from '../i18n/config'
 
 interface AdminJobsState {
   jobs: AdminJob[]
@@ -40,7 +41,7 @@ export const useAdminJobsStore = create<AdminJobsState>((set, get) => ({
     } catch (e) {
       set({
         loading: false,
-        error: e instanceof Error ? e.message : '加载任务失败',
+        error: e instanceof Error ? e.message : i18n.t('store.loadFailed'),
       })
     }
   },
@@ -51,7 +52,7 @@ export const useAdminJobsStore = create<AdminJobsState>((set, get) => ({
       await api.retryAdminJob(jobId)
       await get().loadJobs()
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : '重试失败' })
+      set({ error: e instanceof Error ? e.message : i18n.t('store.retryFailed') })
     } finally {
       set({ actionLoading: null })
     }
@@ -63,7 +64,7 @@ export const useAdminJobsStore = create<AdminJobsState>((set, get) => ({
       await api.cancelAdminJob(jobId)
       await get().loadJobs()
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : '取消失败' })
+      set({ error: e instanceof Error ? e.message : i18n.t('store.cancelFailed') })
     } finally {
       set({ actionLoading: null })
     }
@@ -78,7 +79,7 @@ export const useAdminJobsStore = create<AdminJobsState>((set, get) => ({
     } catch (e) {
       set({
         cleaningUp: false,
-        error: e instanceof Error ? e.message : '清理失败',
+        error: e instanceof Error ? e.message : i18n.t('store.cleanupFailed'),
       })
     }
   },

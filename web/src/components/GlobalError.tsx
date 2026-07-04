@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '../stores/app'
 
 /**
@@ -7,6 +8,7 @@ import { useStore } from '../stores/app'
  * Iron Rule ⑪: Unified error type and display location.
  */
 export function GlobalError() {
+  const { t } = useTranslation()
   const error = useStore((s) => s.error)
   const clearError = useStore((s) => s.clearError)
 
@@ -18,7 +20,7 @@ export function GlobalError() {
       <button
         onClick={clearError}
         className="text-red-400 hover:text-red-300 transition-colors shrink-0 mt-0.5"
-        aria-label="关闭错误提示"
+        aria-label={t("globalError.closeAriaLabel")}
       >
         <X className="w-4 h-4" />
       </button>

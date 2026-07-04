@@ -1,24 +1,25 @@
+import { memo } from 'react'
 import { Menu, Film, Heart, Library, Search, BarChart3, Settings, User, LogOut, Shield, UserCircle, Languages, Tags, Tag, Users, Activity, Calendar, FolderTree, Sparkles, FileText } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useStore } from '../stores/app'
-import { api } from '../api/client'
+import { useLibraryStore } from '../stores/library'
+import { useAssetStore } from '../stores/asset'
+import { useAuthStore } from '../stores/auth'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n/config'
 
-export function Sidebar() {
+export const Sidebar = memo(function Sidebar() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const libraries = useStore((s) => s.libraries)
-  const selectedLibraryId = useStore((s) => s.selectedLibraryId)
-  const selectLibrary = useStore((s) => s.selectLibrary)
-  const showFavorites = useStore((s) => s.showFavorites)
-  const toggleShowFavorites = useStore((s) => s.toggleShowFavorites)
-  const loadAssets = useStore((s) => s.loadAssets)
-  const stats = useStore((s) => s.stats)
-  const user = useStore((s) => s.user)
-  const logout = useStore((s) => s.logout)
+  const libraries = useLibraryStore((s) => s.libraries)
+  const selectedLibraryId = useLibraryStore((s) => s.selectedLibraryId)
+  const selectLibrary = useLibraryStore((s) => s.selectLibrary)
+  const showFavorites = useAssetStore((s) => s.showFavorites)
+  const toggleShowFavorites = useAssetStore((s) => s.toggleShowFavorites)
+  const stats = useLibraryStore((s) => s.stats)
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
   const [collapsed, setCollapsed] = useState(window.innerWidth < 640)
   useEffect(() => {
     const onResize = () => setCollapsed(window.innerWidth < 640)
@@ -231,7 +232,7 @@ export function Sidebar() {
     </aside>
     </>
   )
-}
+});
 
 
 

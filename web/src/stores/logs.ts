@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { LogEntry, LogSource, LogResult } from '../api/logs';
 import * as logsApi from '../api/logs';
+import i18n from '../i18n/config'
 
-const TAIL_OPTIONS = [50, 100, 200, 500, 1000] as const;
 const DEFAULT_TAIL = 200;
 const POLL_INTERVAL = 5000;
 
@@ -80,7 +80,7 @@ export const useLogsStore = create<LogsState>((set, get) => ({
       set({ sources: data.sources, sourcesLoading: false });
     } catch (e: any) {
       set({
-        sourcesError: e?.message || '无法加载日志源列表',
+        sourcesError: e?.message || i18n.t('store.logSourceLoadFailed'),
         sourcesLoading: false,
       });
     }
@@ -128,7 +128,7 @@ export const useLogsStore = create<LogsState>((set, get) => ({
       });
     } catch (e: any) {
       set({
-        logsError: e?.message || '无法加载日志',
+        logsError: e?.message || i18n.t('store.logLoadFailed'),
         logsLoading: false,
       });
     }

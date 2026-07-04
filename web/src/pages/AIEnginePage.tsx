@@ -7,6 +7,7 @@ import { AISearchBar } from "../components/ai/AISearchBar"
 import { AIPendingOverview } from "../components/ai/AIPendingOverview"
 import { AITokenConfig } from "../components/ai/AITokenConfig"
 import { AIPipelineConfig } from "../components/ai/AIPipelineConfig"
+import { AIModuleConfigPanel } from "../components/ai/AIModuleConfigPanel"
 import { GPUInfo } from "../components/ai/GPUInfo"
 import { AIModelStatus } from "../components/ai/AIModelStatus"
 import { AIModelManage } from "../components/ai/AIModelManage"
@@ -54,7 +55,7 @@ export function AIEnginePage() {
             <AISearchBar />
             <AIPendingOverview />
             <AIModelStatus />
-            <AIPipelineConfig />
+            <AIPipelineConfig />            <AIModuleConfigPanel />
             <GPUInfo />
             <AIModelManage />
             <AITokenConfig />

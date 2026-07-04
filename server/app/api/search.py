@@ -1,6 +1,7 @@
 """ReelMind Search API -- unified search + legacy smart search."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 import os
@@ -96,7 +97,7 @@ async def unified_search(req: UnifiedSearchRequest):
 
     # --- CLIP semantic search (via AI container) ---
     try:
-        clip_resp = httpx.post(f"{AI_SERVICE_URL}/clip/search", json={"query": q, "top_k": 20}, timeout=60)
+        clip_resp = httpx.post(f"{AI_SERVICE_URL}/clip/search", json={"query": q, "top_k": 20}, timeout=5)
         if clip_resp.status_code == 200:
             clip_results = clip_resp.json().get("results", [])
             for cr in clip_results:
@@ -196,6 +197,7 @@ async def smart_search(
             "match_sources": ["metadata"],
             "matches": [],
             "scene_status": scene_st,
+            "clip_status": ajobs.get("clip", "pending") or "",
             "transcript_status": trans_st,
             "diarization_status": ajobs.get('diarization', 'pending') or "",
             "has_yolo_tags": yolo_ok,
@@ -224,6 +226,7 @@ async def smart_search(
                     "match_sources": ["transcript"],
                     "matches": [{"source": "transcript", "snippet": text[:200], "time_sec": start_time}],
                     "scene_status": "",
+                    "clip_status": "",
                     "transcript_status": "",
                     "diarization_status": "",
                     "has_yolo_tags": False,
@@ -246,10 +249,12 @@ async def smart_search(
             unmatched_video_ids: set[str] = set()
 
             # SceneTag (YOLO objects) — score 0.7
-            tag_hits = ai_session.query(SceneTag.label, SceneTag.confidence, Scene.video_id, Scene.start_time) \
-                .join(Scene, Scene.id == SceneTag.scene_id) \
-                .filter(SceneTag.label.contains(q)) \
-                .limit(50).all()
+            tag_hits = await asyncio.to_thread(
+                lambda: ai_session.query(SceneTag.label, SceneTag.confidence, Scene.video_id, Scene.start_time)
+                    .join(Scene, Scene.id == SceneTag.scene_id)
+                    .filter(SceneTag.label.contains(q))
+                    .limit(50).all()
+            )
             for label, conf, video_id, start_time in tag_hits:
                 entry = results_by_id.get(video_id)
                 if entry is not None:
@@ -261,10 +266,12 @@ async def smart_search(
                     unmatched_video_ids.add(video_id)
 
             # SceneOCR (in-frame text) — score 0.6
-            ocr_hits = ai_session.query(SceneOCR.text, SceneOCR.confidence, Scene.video_id, Scene.start_time) \
-                .join(Scene, Scene.id == SceneOCR.scene_id) \
-                .filter(SceneOCR.text.contains(q)) \
-                .limit(50).all()
+            ocr_hits = await asyncio.to_thread(
+                lambda: ai_session.query(SceneOCR.text, SceneOCR.confidence, Scene.video_id, Scene.start_time)
+                    .join(Scene, Scene.id == SceneOCR.scene_id)
+                    .filter(SceneOCR.text.contains(q))
+                    .limit(50).all()
+            )
             ocr_unmatched: set[str] = set()
             for text, conf, video_id, start_time in ocr_hits:
                 entry = results_by_id.get(video_id)
@@ -280,7 +287,10 @@ async def smart_search(
 
             # Batch query unmatched video info from AI Video table
             if unmatched_video_ids:
-                videos = {v.id: v for v in ai_session.query(Video).filter(Video.id.in_(list(unmatched_video_ids))).all()}
+                video_rows = await asyncio.to_thread(
+                    lambda: ai_session.query(Video).filter(Video.id.in_(list(unmatched_video_ids))).all()
+                )
+                videos = {v.id: v for v in video_rows}
 
                 # Append tag-only results
                 for label, conf, video_id, start_time in tag_hits:
@@ -297,6 +307,7 @@ async def smart_search(
                             "match_sources": ["object"],
                             "matches": [{"source": "object", "snippet": f"{label} (conf={conf:.2f})", "time_sec": start_time}],
             "scene_status": "",
+            "clip_status": "",
             "transcript_status": "",
                     "diarization_status": "",
             "has_yolo_tags": False,
@@ -325,6 +336,7 @@ async def smart_search(
                             "match_sources": ["ocr"],
                             "matches": [{"source": "ocr", "snippet": text[:120], "time_sec": start_time}],
             "scene_status": "",
+            "clip_status": "",
             "transcript_status": "",
                     "diarization_status": "",
             "has_yolo_tags": False,
@@ -339,7 +351,7 @@ async def smart_search(
 
         # Phase 3: CLIP visual search (via AI container) — score 0.8 * clip_score
         try:
-            clip_resp = httpx.post(f"{AI_SERVICE_URL}/clip/search", json={"query": q, "top_k": 20}, timeout=60)
+            clip_resp = httpx.post(f"{AI_SERVICE_URL}/clip/search", json={"query": q, "top_k": 20}, timeout=5)
             if clip_resp.status_code == 200:
                 clip_results = clip_resp.json().get("results", [])
                 clip_unmatched: set[str] = set()
@@ -361,7 +373,10 @@ async def smart_search(
                 if clip_unmatched:
                     from ..models.ai import Video
                     ai_session2 = get_ai_session()
-                    clip_videos = {v.id: v for v in ai_session2.query(Video).filter(Video.id.in_(list(clip_unmatched))).all()}
+                    clip_video_rows = await asyncio.to_thread(
+                        lambda: ai_session2.query(Video).filter(Video.id.in_(list(clip_unmatched))).all()
+                    )
+                    clip_videos = {v.id: v for v in clip_video_rows}
                     for cr in clip_results:
                         video_id = cr.get("video_id", "")
                         if video_id not in clip_unmatched:
@@ -384,6 +399,7 @@ async def smart_search(
                             "match_sources": ["visual"],
                             "matches": [{"source": "visual", "snippet": f"Visual match ({clip_score:.2f})", "time_sec": time_sec}],
             "scene_status": "",
+            "clip_status": "",
             "transcript_status": "",
                     "diarization_status": "",
             "has_yolo_tags": False,
@@ -401,13 +417,13 @@ async def smart_search(
 
     # Batch-fill AI status for Phase 2/3 entries (from ai_engine_jobs)
     try:
-        from sqlalchemy import cast, String
+        import uuid as _uuid2
         missing = [r for r in results if not r.get("scene_status") and not r.get("transcript_status")]
         if missing:
-            missing_ids = [r["id"] for r in missing]
+            missing_ids = [_uuid2.UUID(r["id"]) for r in missing]
             stmt = sa_select(
                 AIEngineJob.media_id, AIEngineJob.engine_name, AIEngineJob.status
-            ).where(cast(AIEngineJob.media_id, String).in_(missing_ids))
+            ).where(AIEngineJob.media_id.in_(missing_ids))
             rows = await session.execute(stmt)
             job_statuses = {}
             for row in rows:
@@ -415,18 +431,22 @@ async def smart_search(
                 ename = row[1]
                 st = row[2]
                 job_statuses.setdefault(mid, {})[ename] = st
-            for mid, eng_status in job_statuses.items():
-                for r in results:
-                    if r["id"] == mid:
-                        if not r.get("scene_status"):
-                            r["scene_status"] = eng_status.get("scene", "") or ""
-                        if not r.get("transcript_status"):
-                            r["transcript_status"] = eng_status.get("transcript", "") or ""
-                        if not r.get("has_yolo_tags"):
-                            r["has_yolo_tags"] = eng_status.get("yolo", "") == "done"
-                        if not r.get("has_ocr_text"):
-                            r["has_ocr_text"] = eng_status.get("ocr", "") == "done"
-                        break
+            for r in results:
+                eng_status = job_statuses.get(r["id"])
+                if eng_status is None:
+                    continue
+                if not r.get("scene_status"):
+                    r["scene_status"] = eng_status.get("scene", "") or ""
+                if not r.get("transcript_status"):
+                    r["transcript_status"] = eng_status.get("transcript", "") or ""
+                if not r.get("has_yolo_tags"):
+                    r["has_yolo_tags"] = eng_status.get("yolo", "") == "done"
+                if not r.get("has_ocr_text"):
+                    r["has_ocr_text"] = eng_status.get("ocr", "") == "done"
+                if not r.get("clip_status"):
+                    r["clip_status"] = eng_status.get("clip", "") or ""
+                if not r.get("diarization_status"):
+                    r["diarization_status"] = eng_status.get("diarization", "") or ""
     except Exception as e:
         logger.debug("Batch AI status fill error: %s", e)
 
@@ -444,13 +464,11 @@ async def smart_search(
             if missing_ids:
                 stmt = sa_select(Asset.id, Asset.thumbnail_path).where(Asset.id.in_(missing_ids))
                 rows = await session.execute(stmt)
-                for row in rows:
-                    rid = str(row[0])
-                    tp = row[1]
-                    for r in results:
-                        if r["id"] == rid:
-                            r["thumbnail_path"] = tp
-                            break
+                thumb_map = {str(row[0]): row[1] for row in rows}
+                for r in results:
+                    tp = thumb_map.get(r.get("id", ""))
+                    if tp:
+                        r["thumbnail_path"] = tp
     except Exception as e:
         logger.debug("Batch thumbnail fill error: %s", e)
 

@@ -8,7 +8,7 @@ import { GlobalError } from './components/GlobalError'
 import JobManagementPage from './pages/Admin/JobManagement'
 import LogViewerPage from './pages/Admin/LogViewer'
 import { AssetGrid } from './pages/AssetGrid'
-import { AssetDetail } from './pages/AssetDetail'
+import { AssetDetailV2 } from './pages/AssetDetailV2'
 import { AIEnginePage } from './pages/AIEnginePage'
 import { LibraryManager } from './pages/LibraryManager'
 import { SearchPage } from './pages/SearchPage'
@@ -18,18 +18,18 @@ import { TimelineView } from './pages/TimelineView'
 import { DirectoryView } from './pages/DirectoryView'
 import { ProcessedAssets } from './pages/ProcessedAssets'
 import LoginPage from './pages/Login'
-import { useStore } from './stores/app'
+import { useAuthStore } from './stores/auth'
+import { useLibraryStore } from './stores/library'
  import { useEffect, useState } from 'react'
 import i18n from './i18n/config'
 
 export default function App() {
   const [, forceRender] = useState(0)
-  const user = useStore((s) => s.user)
-  const isAuthenticated = useStore((s) => s.isAuthenticated)
-  const authLoading = useStore((s) => s.authLoading)
-  const checkAuth = useStore((s) => s.checkAuth)
-  const loadLibraries = useStore((s) => s.loadLibraries)
-  const loadStats = useStore((s) => s.loadStats)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const authLoading = useAuthStore((s) => s.authLoading)
+  const checkAuth = useAuthStore((s) => s.checkAuth)
+  const loadLibraries = useLibraryStore((s) => s.loadLibraries)
+  const loadStats = useLibraryStore((s) => s.loadStats)
 
   useEffect(() => {
     checkAuth()
@@ -101,21 +101,22 @@ export default function App() {
         <GlobalError />
         <ErrorBoundary>
         <Routes>
-          <Route path="/" element={<AssetGrid />} />
-          <Route path="/asset/:id" element={<AssetDetail />} />
-          <Route path="/libraries" element={<LibraryManager />} />
-          <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
-          <Route path="/ai" element={<AIEnginePage />} />
-          <Route path="/processed" element={<ProcessedAssets />} />
-          <Route path="/tags/browse" element={<TagBrowse />} />
-          <Route path="/tags/manage" element={<TagManager />} />
-          <Route path="/timeline" element={<ErrorBoundary><TimelineView /></ErrorBoundary>} />
-          <Route path="/directory" element={<ErrorBoundary><DirectoryView /></ErrorBoundary>} />
-          <Route path="/admin" element={<ErrorBoundary><AdminDashboardPage /></ErrorBoundary>} />
-          <Route path="/admin/settings" element={<SystemSettingsPage />} />
-         <Route path="/admin/users" element={<UserManagementPage />} />
+          <Route path="/" element={<ErrorBoundary><AssetGrid /></ErrorBoundary>} />
+          <Route path="/asset/:id" element={<ErrorBoundary><AssetDetailV2 /></ErrorBoundary>} />
+          <Route path="/asset-v2/:id" element={<ErrorBoundary><AssetDetailV2 /></ErrorBoundary>} />
+          <Route path="/libraries" element={<ErrorBoundary><LibraryManager /></ErrorBoundary>} />
+         <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
+          <Route path="/ai" element={<ErrorBoundary><AIEnginePage /></ErrorBoundary>} />
+          <Route path="/processed" element={<ErrorBoundary><ProcessedAssets /></ErrorBoundary>} />
+          <Route path="/tags/browse" element={<ErrorBoundary><TagBrowse /></ErrorBoundary>} />
+          <Route path="/tags/manage" element={<ErrorBoundary><TagManager /></ErrorBoundary>} />
+         <Route path="/timeline" element={<ErrorBoundary><TimelineView /></ErrorBoundary>} />
+         <Route path="/directory" element={<ErrorBoundary><DirectoryView /></ErrorBoundary>} />
+         <Route path="/admin" element={<ErrorBoundary><AdminDashboardPage /></ErrorBoundary>} />
+          <Route path="/admin/settings" element={<ErrorBoundary><SystemSettingsPage /></ErrorBoundary>} />
+         <Route path="/admin/users" element={<ErrorBoundary><UserManagementPage /></ErrorBoundary>} />
          <Route path="/admin/jobs" element={<ErrorBoundary><JobManagementPage /></ErrorBoundary>} />
-         <Route path="/admin/logs" element={<LogViewerPage />} />
+         <Route path="/admin/logs" element={<ErrorBoundary><LogViewerPage /></ErrorBoundary>} />
         </Routes>
         </ErrorBoundary>
       </main>

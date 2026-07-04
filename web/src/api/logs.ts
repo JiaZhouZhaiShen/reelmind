@@ -49,6 +49,63 @@ export interface SearchResponse {
   error?: string;
 }
 
+export interface ScanJobInfo {
+  id: string;
+  status: string;
+  progress: number;
+  message?: string;
+  error?: string;
+  created_at: string;
+  finished_at?: string;
+}
+export interface AdminSettingValue {
+  key: string;
+  value: string;
+  value_type: string;
+  category: string;
+  description: string;
+}
+export interface SystemStatus {
+  gpu: { ai_used: number; total_used: number; total: number; ai_percent: number; total_percent: number }
+  models: Record<string, boolean>
+  containers: Record<string, {
+    status: string
+    cpu_percent: number
+    memory_mb: number
+    memory_limit_mb: number
+    memory_percent: number
+    error?: string
+  }>
+}
+export interface AdminDashboard {
+  total_assets: number;
+  total_size_bytes: number;
+  total_duration_seconds: number;
+  pending_import: number;
+  total_users: number;
+  running_jobs: number;
+  failed_jobs: number;
+}
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: string;
+  created_at?: string;
+}
+export interface AdminJob {
+  id: string;
+  job_type: string;
+  status: string;
+  progress: number;
+  message?: string;
+  error?: string;
+  asset_id?: string;
+  library_id?: string;
+  created_at?: string;
+  started_at?: string;
+  finished_at?: string;
+}
+
 export function getLogSources(): Promise<SourceListResponse> {
   return request('/admin/logs/sources');
 }

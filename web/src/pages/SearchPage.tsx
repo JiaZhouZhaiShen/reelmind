@@ -1,86 +1,140 @@
  import { useEffect, useState, useMemo, useRef, useCallback } from "react"
- import { BatchToolbar } from "../components/BatchToolbar"
- import { Search, Film, Monitor, Smartphone, FileText, MessageSquareText, Tag, Image, Sparkles, Video } from "lucide-react"
- import { useStore } from "../stores/app"
+import { BatchToolbar } from "../components/BatchToolbar"
+import { useTranslation } from 'react-i18next'
+ import { Film, Monitor, Smartphone, FileText, MessageSquareText, Tag, Image, Sparkles, Video, ChevronDown } from "lucide-react"
+ import { useSearchStore } from '../stores/search'
+import { useStore } from '../stores/app'
  import { SearchBar } from "../components/SearchBar"
- import { SearchResultCard } from "../components/SearchResultCard"
+ import { SearchVideoCard } from "../components/SearchVideoCard"
  import { useNavigate } from "react-router-dom"
- import { useTranslation } from "react-i18next"
  import { useVirtualizer } from "@tanstack/react-virtual"
  import { useMarqueeSelection } from "../hooks/useMarqueeSelection"
  import { toPseudoAsset } from "../utils/search"
  import { formatCount } from "../utils/format"
  import type { Asset, SearchResult } from "../api/client"
-
 const COL_BREAKPOINTS = [
-  [1536, 6], [1280, 5], [1024, 4], [768, 3], [0, 2],
+  [1536, 6], [1024, 5], [768, 3], [0, 2],
 ] as const
-
 const GRID_ROW_HEIGHT = 204
 const LOAD_MORE_THRESHOLD = 800
-
 type VirtualRow = { type: "grid"; key: string; assets: Asset[]; searchResults: SearchResult[] } | { type: "loading"; key: string }
-
 type SourceFilter = "all" | "metadata" | "transcript" | "object" | "ocr" | "visual"
-
 interface FilterOption {
   key: SourceFilter
   icon: typeof Sparkles
-  label: string
   color: string
 }
-
 const FILTER_OPTIONS: FilterOption[] = [
-  { key: "all", icon: Sparkles, label: "\u5168\u90e8", color: "text-gray-400" },
-  { key: "metadata", icon: FileText, label: "\u6587\u4ef6\u540d", color: "text-gray-400" },
-  { key: "transcript", icon: MessageSquareText, label: "\u5b57\u5e55", color: "text-gray-400" },
-  { key: "object", icon: Tag, label: "\u6807\u8bc6", color: "text-gray-400" },
-  { key: "ocr", icon: FileText, label: "OCR", color: "text-gray-400" },
-  { key: "visual", icon: Image, label: "\u573a\u666f", color: "text-gray-400" },
+  { key: "all", icon: Sparkles, color: "text-gray-400" },
+  { key: "metadata", icon: FileText, color: "text-gray-400" },
+  { key: "transcript", icon: MessageSquareText, color: "text-gray-400" },
+  { key: "object", icon: Tag, color: "text-gray-400" },
+  { key: "ocr", icon: FileText, color: "text-gray-400" },
+  { key: "visual", icon: Image, color: "text-gray-400" },
 ]
-
-
 function getOrientation(w?: number, h?: number): "landscape" | "portrait" | "square" | undefined {
   if (!w || !h) return undefined
   if (w === h) return "square"
   return w > h ? "landscape" : "portrait"
 }
-
 type OrientationFilter = "all" | "landscape" | "portrait"
-
+// ── Compact custom dropdown ──
+function CompactSelect({ value, options, onChange }: {
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (v: string) => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+  const selected = options.find(o => o.value === value)
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="border-0 bg-gray-800/40 text-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none cursor-pointer flex items-center gap-1"
+      >
+        <span>{selected?.label || value}</span>
+        <ChevronDown className="w-3 h-3 text-gray-500" />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-lg min-w-[90px] overflow-hidden">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false) }}
+              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${opt.value === value ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-300 hover:bg-gray-700'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 export function SearchPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const searchQuery = useStore((s) => s.searchQuery)
-  const setSearchQuery = useStore((s) => s.setSearchQuery)
-  const searchResults = useStore((s) => s.searchResults)
-  const searchTotal = useStore((s) => s.searchTotal)
-  const searchPage = useStore((s) => s.searchPage)
-  const searchHasMore = useStore((s) => s.searchHasMore)
-  const searchInitLoading = useStore((s) => s.searchInitLoading)
-  const searchMoreLoading = useStore((s) => s.searchMoreLoading)
-  const searchError = useStore((s) => s.searchError)
-  const searchLoadResults = useStore((s) => s.searchLoadResults)
-  const clearError = useStore((s) => s.clearError)
 
-  // ── UI-only local state ──
+  const sourceLabel = (key: SourceFilter) => {
+    switch (key) {
+      case 'all': return t('common.all')
+      case 'metadata': return t('searchPage.sourceMetadata')
+      case 'transcript': return t('common.subtitle')
+      case 'object': return t('common.tagLabel')
+      case 'ocr': return 'OCR'
+      case 'visual': return t('common.scene')
+      default: return key
+    }
+  }
+
+
+  const searchQuery = useSearchStore((s) => s.searchQuery)
+  const setSearchQuery = useSearchStore((s) => s.setSearchQuery)
+  const searchResults = useSearchStore((s) => s.searchResults)
+  const searchTotal = useSearchStore((s) => s.searchTotal)
+  const searchPage = useSearchStore((s) => s.searchPage)
+  const searchHasMore = useSearchStore((s) => s.searchHasMore)
+  const searchInitLoading = useSearchStore((s) => s.searchInitLoading)
+  const searchMoreLoading = useSearchStore((s) => s.searchMoreLoading)
+  const searchError = useSearchStore((s) => s.searchError)
+  const searchLoadResults = useSearchStore((s) => s.searchLoadResults)
+  const clearError = useStore((s) => s.clearError)
+  const searchDurationMin = useSearchStore((s) => s.searchDurationMin)
+  const searchDurationMax = useSearchStore((s) => s.searchDurationMax)
+  const searchFileSizeMin = useSearchStore((s) => s.searchFileSizeMin)
+  const searchFileSizeMax = useSearchStore((s) => s.searchFileSizeMax)
+  const setSearchDurationFilter = useSearchStore((s) => s.setSearchDurationFilter)
+  const setSearchFileSizeFilter = useSearchStore((s) => s.setSearchFileSizeFilter)
+ const searchTriggerKey = useSearchStore((s) => s.searchTriggerKey)
+  const resetSearch = useSearchStore((s) => s.resetSearch)
+ // ── UI-only local state ──
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all")
   const [orientationFilter, setOrientationFilter] = useState<OrientationFilter>("all")
-
+  const [durFilter, setDurFilter] = useState("all")
+  const [customMinStr, setCustomMinStr] = useState("")
+  const [customMaxStr, setCustomMaxStr] = useState("")
+  const [sizeFilter, setSizeFilter] = useState("all")
   // ── Responsive cols ──
   const contRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [contW, setContW] = useState(1200)
-
   useMarqueeSelection(scrollRef)
-
   const cols = useMemo(() => {
     for (const [minW, c] of COL_BREAKPOINTS) {
       if (contW >= minW) return c
     }
     return 2
   }, [contW])
-
   useEffect(() => {
     if (!contRef.current) return
     const ro = new ResizeObserver((es) => {
@@ -89,14 +143,21 @@ export function SearchPage() {
     ro.observe(contRef.current)
     return () => ro.disconnect()
   }, [])
-
-  // ── Trigger search when query changes ──
+  // ── Trigger search when query changes (custom mode uses search button) ──
   useEffect(() => {
-    if (searchQuery) {
+    if (durFilter === "custom") {
+      const min = customMinStr === "" ? undefined : Number(customMinStr)
+      const max = customMaxStr === "" ? undefined : Number(customMaxStr)
+      setSearchDurationFilter(min, max)
+      searchLoadResults(1, false)
+      return
+    }
+
+    if (searchQuery || searchDurationMin !== undefined || searchDurationMax !== undefined || searchFileSizeMin !== undefined || searchFileSizeMax !== undefined) {
       searchLoadResults(1, false)
     }
-  }, [searchQuery])
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTriggerKey, searchQuery, searchDurationMin, searchDurationMax, searchFileSizeMin, searchFileSizeMax, durFilter])
   // ── Infinite scroll detection ──
   const handleScroll = useCallback(() => {
     if (!scrollRef.current || !searchHasMore || searchMoreLoading || searchInitLoading) return
@@ -105,13 +166,11 @@ export function SearchPage() {
       searchLoadResults(searchPage + 1, true)
     }
   }, [searchHasMore, searchMoreLoading, searchInitLoading, searchPage, searchLoadResults])
-
   // ── Source filter ──
   const sourceFiltered = useMemo(() => {
     if (sourceFilter === "all") return searchResults
     return searchResults.filter((r) => (r.match_sources ?? []).includes(sourceFilter))
   }, [searchResults, sourceFilter])
-
   // ── Orientation filter ──
   const filteredResults = useMemo(() => {
     if (orientationFilter === "all") return sourceFiltered
@@ -120,7 +179,6 @@ export function SearchPage() {
       return o === orientationFilter
     })
   }, [sourceFiltered, orientationFilter])
-
   // ── Source stats ──
   const sourceStats = useMemo(() => {
     const stats: Record<string, number> = { all: searchResults.length }
@@ -131,7 +189,6 @@ export function SearchPage() {
     }
     return stats
   }, [searchResults])
-
   // ── Convert filtered search results → pseudo Asset[], then chunk for virtual grid ──
   const allChunks = useMemo(() => {
     const assets = filteredResults.map(toPseudoAsset)
@@ -144,7 +201,6 @@ export function SearchPage() {
     }
     return chunks
   }, [filteredResults, cols])
-
   // ── Virtual rows ──
   const virtualRows: VirtualRow[] = useMemo(() => {
     const rows: VirtualRow[] = []
@@ -156,7 +212,6 @@ export function SearchPage() {
     }
     return rows
   }, [allChunks, searchHasMore, searchInitLoading])
-
   const estimateSize = useCallback(
     (i: number) => {
       const r = virtualRows[i]
@@ -166,7 +221,6 @@ export function SearchPage() {
     },
     [virtualRows],
   )
-
   const virtualizer = useVirtualizer({
     count: virtualRows.length,
     getScrollElement: () => scrollRef.current,
@@ -175,11 +229,9 @@ export function SearchPage() {
     getItemKey: (i) => virtualRows[i]?.key ?? String(i),
     measureElement: (el) => el.getBoundingClientRect().height,
   })
-
   // ── Skeleton grid for initial loading ──
   const skeletonCols = cols || 4
   const skeletonRows = 3
-
   // ══════════════ Render ══════════════
   return (
     <>
@@ -194,22 +246,74 @@ export function SearchPage() {
           </div>
         </div>
       )}
-
       {/* Empty state — Google-style */}
-      {!searchQuery && !searchInitLoading && (
+      {!searchQuery && !searchInitLoading && searchResults.length === 0 && (
         <div className="flex flex-col items-center justify-center min-h-screen -mt-16 px-4">
           <div className="mb-8 flex flex-col items-center gap-1">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm mb-4">
               <Video className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-4xl font-semibold tracking-tight text-white">ReelMind</h1>
-            <p className="text-sm text-gray-500 mt-1.5">搜索你的视频库</p>
+            <p className="text-sm text-gray-500 mt-1.5">{t('searchPage.searchLibrary')}</p>
           </div>
           <div className="w-full max-w-lg">
             <SearchBar />
           </div>
+          <div className="w-full max-w-lg mt-4 flex items-center justify-center gap-2 text-sm">
+            <span className="text-gray-400 shrink-0">{t('common.duration')}</span>
+            <CompactSelect
+              value={durFilter}
+              options={[
+                { value: 'all', label: t('common.all') },
+                { value: 'le15', label: t('searchPage.durationLe15') },
+                { value: 'le30', label: t('searchPage.durationLe30') },
+                { value: 'le1m', label: t('searchPage.durationLe1m') },
+                { value: 'le5m', label: t('searchPage.durationLe5m') },
+                { value: 'le10m', label: t('searchPage.durationLe10m') },
+                { value: 'ge10m', label: t('searchPage.durationGe10m') },
+                { value: 'ge30m', label: t('searchPage.durationGe30m') },
+                { value: 'custom', label: t('searchPage.durationCustom') },
+              ]}
+             onChange={(v) => {
+               setDurFilter(v);
+               if (v === "custom") return;
+               const m = { all: [undefined, undefined], le15: [undefined, 15], le30: [undefined, 30], le1m: [undefined, 60], le5m: [undefined, 300], le10m: [undefined, 600], ge10m: [600, undefined], ge30m: [1800, undefined], custom: [undefined, undefined] };
+               const p = m[v];
+               setSearchDurationFilter(p[0], p[1]);
+             }}
+            />
+            {durFilter === 'custom' && (
+              <div className="flex items-center gap-1">
+                <input type="number" min={0} value={customMinStr} placeholder="0"
+                  onChange={(e) => setCustomMinStr(e.target.value)}
+                  className="w-16 bg-gray-800/40 border border-gray-700 rounded-lg px-2 py-1 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500/60" />
+                <span className="text-gray-500 text-xs">~</span>
+                <input type="number" min={0} value={customMaxStr} placeholder="inf"
+                  onChange={(e) => setCustomMaxStr(e.target.value)}
+                  className="w-16 bg-gray-800/40 border border-gray-700 rounded-lg px-2 py-1 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500/60" />
+                <span className="text-gray-500 text-xs">{t("searchPage.seconds")}</span>
+              </div>
+            )}
+            <span className="text-gray-400 shrink-0 ml-2">{t('common.size')}</span>
+            <CompactSelect
+              value={sizeFilter}
+              options={[
+                { value: 'all', label: t('common.all') },
+                { value: 'le100m', label: '≤100M' },
+                { value: 'le500m', label: '≤500M' },
+                { value: 'ge500m', label: '≥500M' },
+                { value: 'ge1g', label: '≥1G' },
+              ]}
+              onChange={(v) => {
+                setSizeFilter(v);
+                const m: Record<string, (number | undefined)[]> = { all: [undefined, undefined], le100m: [undefined, 104857600], le500m: [undefined, 524288000], ge500m: [524288000, undefined], ge1g: [1073741824, undefined] };
+                const p = m[v];
+                setSearchFileSizeFilter(p[0], p[1]);
+              }}
+            />
+          </div>
           <div className="mt-8 flex items-center gap-2 text-sm text-gray-500">
-            <span>试试搜索:</span>
+            <span>{t('searchPage.trySearch')}</span>
             <button onClick={() => { setSearchQuery("Car"); navigate("/search"); }}
               className="py-1.5 px-3 rounded-lg border border-gray-700/50 text-gray-400 hover:border-gray-500 hover:text-gray-300 cursor-pointer transition-colors">Car</button>
             <button onClick={() => { setSearchQuery("House"); navigate("/search"); }}
@@ -219,32 +323,40 @@ export function SearchPage() {
           </div>
         </div>
       )}
-
       {/* Results / searching state */}
-      {(searchQuery || searchInitLoading) && (
+      {(searchQuery || searchInitLoading || searchResults.length > 0) && (
         <div ref={contRef} className="flex h-full flex-1 min-w-0 overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden max-w-7xl mx-auto w-full">
             {/* ── Header ── */}
             <div className="p-4 pb-2 shrink-0">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="flex-1"><SearchBar /></div>
-                {!searchInitLoading && (
+             <div className="flex items-center gap-4 mb-6">
+              <div className="flex-1"><SearchBar /></div>
+               {!searchInitLoading && (
+                <button
+                   onClick={() => resetSearch()}
+                  className="text-gray-500 hover:text-gray-300 transition-colors shrink-0"
+                  title={t('searchPage.backToHome')}
+                >
+                  ✕
+                </button>
+              )}
+              {!searchInitLoading && (
                   <div className="flex items-center border border-gray-700 rounded-lg overflow-hidden shrink-0">
                     <button onClick={() => setOrientationFilter("all")}
-                      className={"py-1.5 px-3 text-xs transition-colors " + (orientationFilter === "all" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200")}>全部</button>
+                      className={"py-1.5 px-3 text-xs transition-colors " + (orientationFilter === "all" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200")}>{t('common.all')}</button>
                     <button onClick={() => setOrientationFilter("landscape")}
                       className={"py-1.5 px-3 text-xs transition-colors flex items-center gap-1 " + (orientationFilter === "landscape" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200")}>
-                      <Monitor className="w-3.5 h-3.5" /><span>横屏</span></button>
+                      <Monitor className="w-3.5 h-3.5" /><span>{t('common.landscape')}</span></button>
                     <button onClick={() => setOrientationFilter("portrait")}
                       className={"py-1.5 px-3 text-xs transition-colors flex items-center gap-1 " + (orientationFilter === "portrait" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200")}>
-                      <Smartphone className="w-3.5 h-3.5" /><span>竖屏</span></button>
+                      <Smartphone className="w-3.5 h-3.5" /><span>{t('common.portrait')}</span></button>
                   </div>
                 )}
               </div>
               {searchQuery && (
                 <div className="flex flex-col gap-2">
                   <p className="text-sm text-gray-400">
-                    搜索 "<span className="text-gray-200">{searchQuery}</span>" — {formatCount(searchTotal)} 个结果
+                    {t('searchPage.searchLabel')} "<span className="text-gray-200">{searchQuery}</span>" — {formatCount(searchTotal)} {t('searchPage.resultUnit')}
                   </p>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {FILTER_OPTIONS.map((opt) => {
@@ -254,7 +366,7 @@ export function SearchPage() {
                         <button key={opt.key} onClick={() => setSourceFilter(opt.key)}
                           className={"inline-flex items-center gap-1 py-1.5 px-3 text-xs rounded-lg transition-colors " + (isActive ? "bg-gray-700 text-white border border-gray-600" : "bg-gray-800/60 text-gray-400 hover:text-gray-200 border border-gray-800 hover:border-gray-600")}>
                           <opt.icon className={"w-3 h-3 " + opt.color} />
-                          <span>{opt.label}</span>
+                          <span>{sourceLabel(opt.key)}</span>
                           {count > 0 && <span className={"ml-0.5 text-[10px] " + (isActive ? "text-gray-400" : "text-gray-500")}>{count}</span>}
                         </button>
                       )
@@ -263,7 +375,6 @@ export function SearchPage() {
                 </div>
               )}
             </div>
-
             {/* ── Initial loading — Skeleton ── */}
             {searchInitLoading && (
               <div className="flex-1 overflow-y-auto px-4">
@@ -274,16 +385,14 @@ export function SearchPage() {
                 </div>
               </div>
             )}
-
             {/* ── No results ── */}
             {!searchInitLoading && searchQuery && filteredResults.length === 0 && !searchError && (
               <div className="flex flex-col items-center justify-center flex-1 text-gray-500">
                 <Film className="w-16 h-16 mb-4 text-gray-500" />
-                <p className="text-gray-400">没有找到匹配的结果</p>
-                <p className="text-sm text-gray-500 mt-1">尝试其他关键词或调整筛选条件</p>
+                <p className="text-gray-400">{t('searchPage.noResults')}</p>
+                <p className="text-sm text-gray-500 mt-1">{t('searchPage.tryAdjustFilters')}</p>
               </div>
             )}
-
             {/* ── Virtualized results grid ── */}
             {!searchInitLoading && filteredResults.length > 0 && (
               <>
@@ -319,7 +428,7 @@ export function SearchPage() {
                             >
                               {row.searchResults.map((sr: SearchResult) => {
                                 return (
-                                  <SearchResultCard key={sr.id} result={sr} />
+                                  <SearchVideoCard key={sr.id} resultId={sr.id} />
                                 )
                               })}
                             </div>

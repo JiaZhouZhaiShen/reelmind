@@ -19,8 +19,8 @@ from ..database import get_session, async_session_factory
 from ..models.library import Library
 from ..models.job import Job
 from ..models.asset import Asset
-from ..models.system_settings import SystemSetting
 from ..config import settings
+from ..core import settings_cache as _scache
 from ..auth import get_current_user
 from ..core.indexer import IndexingService
 
@@ -46,37 +46,15 @@ async def require_auth(current_user: dict = Depends(get_current_user)) -> dict:
 
 # ── Helper: build IndexingService with settings ──────────────────────
 async def _build_indexing_service(library_id: str) -> IndexingService:
-    """Load scanning settings from DB / defaults and build an IndexingService."""
+    """Validate library exists and build an IndexingService."""
     async with async_session_factory() as session:
-        # Load library settings
         stmt = select(Library).options(selectinload(Library.paths)).where(Library.id == library_id)
         result = await session.execute(stmt)
         lib = result.scalar_one_or_none()
         if not lib:
             raise HTTPException(404, "Library not found")
 
-        # Load system settings for scanning
-        s = (await session.execute(select(SystemSetting))).scalars().all()
-        s_map = {r.key: r.value for r in s}
-
-    ffprobe_concurrency = int(s_map.get("ffprobe_concurrency", settings.FFPROBE_CONCURRENCY))
-    metadata_batch_size = int(s_map.get("metadata_batch_size", settings.METADATA_BATCH_SIZE))
-    max_workers = max(1, min(ffprobe_concurrency * 2, 8))
-
-    # SSE progress publisher
-    def _publish_to_redis(data: dict):
-        data["library_id"] = str(library_id)
-        try:
-            import redis as sync_redis
-            r = sync_redis.Redis(
-                host=settings.REDIS_HOST, port=settings.REDIS_PORT,
-                db=settings.REDIS_DB, decode_responses=True)
-            r.publish(f"scan:progress:{library_id}", json.dumps(data, default=str))
-            r.close()
-        except Exception:
-            pass
-
-    # IndexingService handles its own concurrency & progress publishing internally
+    # IndexingService reads settings from system settings cache internally
     return IndexingService()
 
 
@@ -122,11 +100,22 @@ async def trigger_library_scan(lib_id: str, purge: bool = False) -> dict:
 
         # Load lib settings
         lib_settings = lib.settings or {}
+        # Custom video extensions: library level, fall back to global
         custom_video_extensions = lib_settings.get("custom_video_extensions", [])
+        if not custom_video_extensions:
+            raw_global = _scache.get_str("supported_video_extensions", "")
+            if raw_global:
+                custom_video_extensions = [x.strip() for x in raw_global.split(",") if x.strip()]
+
+        # Excluded extensions: library level, fall back to global
         excluded_extensions = lib_settings.get("excluded_extensions", [])
+        if not excluded_extensions:
+            excluded_extensions = _scache.get_csv("excluded_extensions", [])
+
+        # Metadata fields: library level, fall back to global
         metadata_fields = None
         try:
-            mf = lib_settings.get("metadata_fields", "")
+            mf = lib_settings.get("metadata_fields", "") or _scache.get_str("metadata_fields", "")
             if mf and isinstance(mf, str) and mf.strip():
                 metadata_fields = [x.strip() for x in mf.split(",") if x.strip()]
         except Exception:

@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, memo } from "react"
+import { useTranslation } from "react-i18next"
 import { Cpu, Gauge, Thermometer, Zap } from "lucide-react"
-import { useStore } from "../../stores/app"
+import { useAdminStore } from "../../stores/admin"
 
-export function GPUStatusCard() {
-  const sysStatus = useStore((s) => s.systemStatus)
-  const loading = useStore((s) => s.sysStatusLoading)
+export const GPUStatusCard = memo(function GPUStatusCard() {
+  const { t } = useTranslation()
+  const sysStatus = useAdminStore((s) => s.systemStatus)
+  const loading = useAdminStore((s) => s.sysStatusLoading)
   const data = sysStatus?.gpu ?? null
   const canvasRef = useRef<HTMLCanvasElement>(null)
  const [animatedPct, setAnimatedPct] = useState(0)
@@ -133,7 +135,7 @@ export function GPUStatusCard() {
             <Cpu className="w-5 h-5 text-indigo-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-gray-300">GPU 状态</h3>
+            <h3 className="text-sm font-semibold text-gray-300">{t("gpuStatus.title")}</h3>
             <p className="text-xs text-gray-500">GPU Status</p>
           </div>
         </div>
@@ -159,7 +161,7 @@ export function GPUStatusCard() {
             <div className="flex items-center justify-between text-xs mb-1.5">
               <span className="text-gray-400 flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
-                总显存占用
+                {t("gpuStatus.totalMemory")}
               </span>
               <span className="text-gray-300 font-mono text-xs">
                 {loading ? "..." : `${totalUsed.toFixed(1)} / ${totalGb.toFixed(1)} GB`}
@@ -176,7 +178,7 @@ export function GPUStatusCard() {
             <div className="flex items-center justify-between text-xs mb-1.5">
               <span className="text-gray-400 flex items-center gap-1.5">
                 <Gauge className="w-3.5 h-3.5 text-purple-400" />
-                AI 容器显存
+                {t("gpuStatus.aiMemory")}
               </span>
               <span className="text-gray-300 font-mono text-xs">
                 {loading ? "..." : `${aiUsed.toFixed(1)} / ${totalGb.toFixed(1)} GB`}
@@ -192,12 +194,12 @@ export function GPUStatusCard() {
           <div className="flex items-center gap-2 pt-1">
             <Thermometer className="w-3.5 h-3.5 text-gray-600" />
             <span className={`text-xs ${loading ? "text-gray-600" : totalPct < 50 ? "text-emerald-500" : totalPct < 80 ? "text-amber-500" : "text-red-500"}`}>
-              {loading ? "检测中..." : totalPct < 50 ? "运行正常" : totalPct < 80 ? "负载偏高" : "高负载"}
+              {loading ? t("gpuStatus.checking") : totalPct < 50 ? t("gpuStatus.normal") : totalPct < 80 ? t("gpuStatus.highLoad") : t("gpuStatus.critical")}
             </span>
           </div>
         </div>
       </div>
     </div>
   )
-}
+});
 

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import * as aiApi from '../api/ai'
 import type { QueueStatus, PendingCounts, PipelineProgress, GPUInfo } from '../types/ai'
 import type { PipelineState } from '../types/ai'
+import i18n from '../i18n/config'
 function defaultQueueStatus(): QueueStatus {
   return { status: "idle", total: 0, completed: 0, failed: 0, skipped: 0,
     overall_progress: 0, current_video: null, current_stage: '', current_progress: 0,
@@ -25,6 +26,12 @@ interface AIStore {
   queueStatus: QueueStatus
   error: string | null
   clearError: () => void
+
+  moduleConfig: Record<string, any> | null
+  moduleConfigLoading: boolean
+  moduleConfigSaving: boolean
+  fetchModuleConfig: () => Promise<void>
+  saveModuleConfig: (config: Record<string, any>) => Promise<boolean>
 
   setHfToken: (t: string) => void
   saveHfToken: () => Promise<void>
@@ -60,8 +67,41 @@ export const useAIStore = create<AIStore>((set, get) => ({
   sseActive: false,
   queueStatus: defaultQueueStatus(),
   error: null,
+  moduleConfig: null,
+  moduleConfigLoading: true,
+  moduleConfigSaving: false,
 
   clearError: () => set({ error: null }),
+
+  fetchModuleConfig: async () => {
+    try {
+      const resp = await aiApi.getModulesConfig()
+      if (resp?.config) {
+        const modIds = ["scene","yolo","ocr","clip","whisper","diarization"]
+        const filtered: Record<string, any> = {}
+        for (const id of modIds) { if (resp.config[id]) filtered[id] = { ...resp.config[id] } }
+        set({ moduleConfig: filtered, moduleConfigLoading: false })
+      } else {
+        set({ moduleConfigLoading: false })
+      }
+    } catch (err) {
+      console.error("fetchModuleConfig failed:", err)
+      set({ error: "\u83b7\u53d6\u6a21\u5757\u914d\u7f6e\u5931\u8d25: " + (err as Error).message, moduleConfigLoading: false })
+    }
+  },
+
+  saveModuleConfig: async (config: Record<string, any>) => {
+    set({ moduleConfigSaving: true })
+    try {
+      await aiApi.saveModulesConfig(config)
+      set({ moduleConfig: config, moduleConfigSaving: false })
+      return true
+    } catch (err) {
+      console.error("saveModuleConfig failed:", err)
+      set({ error: "\u4fdd\u5b58\u6a21\u5757\u914d\u7f6e\u5931\u8d25: " + (err as Error).message, moduleConfigSaving: false })
+      return false
+    }
+  },
 
   setHfToken: (t) => set({ hfToken: t }),
 
@@ -83,7 +123,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
     try {
       const data = await aiApi.getAIModelStatus()
       const gpu = data.gpu as any; const mappedGpu: GPUInfo = { used: gpu.used ?? 0, total: gpu.total ?? 0, percent: gpu.percent ?? 0 }; set({ modelStatus: data.models, gpuInfo: mappedGpu, gpuInfoLoading: false, modelStatusLoading: false })
-    } catch (err) { console.error('fetchModelAndGpu failed:', err); set({ error: '获取模型/GPU 状态失败: ' + (err as Error).message, gpuInfoLoading: false, modelStatusLoading: false }) }
+    } catch (err) { console.error('fetchModelAndGpu failed:', err); set({ error: i18n.t('store.loadFailed') + ': ' + (err as Error).message, gpuInfoLoading: false, modelStatusLoading: false }) }
   },
 
   fetchPendingCount: async () => {
@@ -178,12 +218,14 @@ export const useAIStore = create<AIStore>((set, get) => ({
     store.loadHfTokenStatus()
     store.fetchModelAndGpu()
     store.fetchPendingCount()
+    store.fetchModuleConfig()
     store.fetchScanStatus()
 
     const intervals = [
       setInterval(() => get().fetchModelAndGpu(), 10000),
-      setInterval(() => get().fetchPendingCount(), 3000),
-      setInterval(() => get().fetchScanStatus(), 3000),
+      setInterval(() => get().fetchPendingCount(), 10000),
+      setInterval(() => get().fetchScanStatus(), 2000),
+      setInterval(() => get().fetchModuleConfig(), 30000),
     ]
     return () => intervals.forEach(clearInterval)
   },
@@ -281,7 +323,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       } catch { /* SSE JSON parse errors — non-critical */ }
     }
 
-    es.onerror = () => { set({ sseActive: false, error: 'SSE 连接断开，实时状态可能延迟' }) }
+    es.onerror = () => { set({ sseActive: false, error: i18n.t('store.sseDisconnected') }) }
     return () => es.close()
   }
 }))

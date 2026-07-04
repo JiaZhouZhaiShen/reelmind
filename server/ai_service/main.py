@@ -226,6 +226,7 @@ class ModuleConfigRequest(BaseModel):
 
 def _run_pipeline_task(task_id: str, limit: int, video_ids: list[str] | None,
                         engines: list[str] | None = None,
+                        task_label: str = "manual",
                         filters: dict | None = None):
 
     cancel_event = threading.Event()
@@ -318,11 +319,24 @@ def _run_pipeline_task(task_id: str, limit: int, video_ids: list[str] | None,
 
             pg.close()
 
-            results = process_batch(pending_assets=assets,
-                                    progress_callback=progress_callback,
-                                    cancel_event=cancel_event,
-                                    engines=engines,
-                                    filters=filters)
+            # Single video: use AIPipeline for proper per-engine status tracking
+            if len(video_ids) == 1 and task_label == "single" and assets:
+                vid = str(assets[0].id)
+                vpath = str(assets[0].original_path)
+                ai_pipeline = AIPipeline(
+                    video_id=vid,
+                    video_path=vpath,
+                    progress_callback=progress_callback,
+                    engines=engines,
+                )
+                ai_pipeline.run()
+                results = {"status": "completed", "video_id": vid, "processed": 1}
+            else:
+                results = process_batch(pending_assets=assets,
+                                        progress_callback=progress_callback,
+                                        cancel_event=cancel_event,
+                                        engines=engines,
+                                        filters=filters)
 
 
 
@@ -442,7 +456,7 @@ async def start_pipeline(req: StartRequest):
 
     thread = threading.Thread(
 
-        target=_run_pipeline_task, args=(task_id, req.limit, req.video_ids, req.engines, req.filters),
+        target=_run_pipeline_task, args=(task_id, req.limit, req.video_ids, req.engines, req.task_label, req.filters),
 
         daemon=True
 
@@ -543,6 +557,20 @@ async def load_model(model_name: str):
         raise HTTPException(status_code=404, detail=f"Unknown model: {model_name}")
 
     success = _load_model_instance(model_name)
+
+
+    # Delete PG engine jobs so pipeline does not skip re-processing
+    try:
+        from models.db import get_pg_session
+        from sqlalchemy import text
+        pg = get_pg_session()
+        pg.execute(text("UPDATE ai_engine_jobs SET status = :s, error_message = NULL, retry_count = 0, started_at = NULL, completed_at = NULL WHERE media_id = :mid"), {"s": "pending", "mid": video_id})
+        pg.commit()
+        pg.close()
+        logger.info("Reset PG engine jobs to pending for video %s", video_id)
+    except Exception as e:
+        logger.warning("Failed to delete PG engine jobs for %s: %s", video_id, e)
+    
 
     return {"status": "ok" if success else "error", "model": model_name, "loaded": success}
 
@@ -832,7 +860,16 @@ async def reset_asset(video_id: str):
 
         logger.info("Deleted scene thumbnails: %s", thumb_dir)
 
- 
+    # Delete PG engine jobs so pipeline does not skip re-processing
+    try:
+        from models.db import get_pg_session
+        from sqlalchemy import text
+        pg = get_pg_session()
+        pg.execute(text("UPDATE ai_engine_jobs SET status = :s, error_message = NULL, retry_count = 0, started_at = NULL, completed_at = NULL WHERE media_id = :mid"), {"s": "pending", "mid": video_id})
+        pg.commit()
+        pg.close()
+        logger.info("Reset PG engine jobs to pending for video %s", video_id)
+    except Exception as e:
+        logger.warning("Failed to delete PG engine jobs for %s: %s", video_id, e)
 
     return {"status": "ok", "video_id": video_id}
-

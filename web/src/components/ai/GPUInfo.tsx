@@ -1,10 +1,11 @@
 import { useTranslation } from "react-i18next";
+import { memo } from 'react'
 import { Cpu } from "lucide-react";
 import { useAIStore } from "../../stores/ai";
 
-export function GPUInfo() {
-  const { t } = useTranslation();
-  const gpuInfo = useAIStore((s) => s.gpuInfo);
+export const GPUInfo = memo(function GPUInfo() {
+ const { t } = useTranslation()
+ const gpuInfo = useAIStore((s) => s.gpuInfo);
   const gpuInfoLoading = useAIStore((s) => s.gpuInfoLoading);
   if (!gpuInfoLoading && gpuInfo.total === 0) {
     return (
@@ -14,10 +15,10 @@ export function GPUInfo() {
         </h3>
         <div className="flex flex-col items-center py-8 text-gray-500">
           <Cpu className="w-10 h-10 mb-2" />
-          <p className="text-sm">{t("aiEngine.noGpu") || "未检测到 GPU"}</p>
+          <p className="text-sm">{t('gpuInfo.noGpu')}</p>
           <p className="text-xs text-gray-600 mt-1">
             {t("aiEngine.gpuDriverHint") ||
-              "确保服务器有 NVIDIA GPU 并安装了驱动"}
+              t('gpuInfo.ensureDriver')}
           </p>
         </div>
       </div>
@@ -64,4 +65,4 @@ export function GPUInfo() {
       <p className="text-xs text-gray-600 mt-2">{t("aiEngine.gpuDesc")}</p>
     </div>
   );
-}
+});

@@ -1,1 +1,1 @@
-psycopg2-binary==2.9.9
+# Orchestrator now uses stdlib urllib.request only — no extra dependencies.

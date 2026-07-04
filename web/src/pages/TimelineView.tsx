@@ -5,6 +5,9 @@ import { VideoCard } from '../components/VideoCard'
 import { YearTimeline } from '../components/YearTimeline'
 import { BatchToolbar } from '../components/BatchToolbar'
 import { useStore } from '../stores/app'
+import { useLibraryStore } from '../stores/library'
+import { useGridStore } from '../stores/grid'
+import { useAssetStore } from '../stores/asset'
 import { useTranslation } from 'react-i18next'
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection'
 
@@ -22,9 +25,9 @@ function formatCount(n: number): string {
 
 export function TimelineView() {
   const { t } = useTranslation()
-  const selectedLibraryId = useStore((s) => s.selectedLibraryId)
+  const selectedLibraryId = useLibraryStore((s) => s.selectedLibraryId)
+  const years = useGridStore(s => s.gridTimelineYears)
 
-  const [years, setYears] = useState<Array<{ year: number; count: number }>>([])
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
   const [yearDays, setYearDays] = useState<Record<number, DayInfo[]>>({})
   const [dayAssets, setDayAssets] = useState<Record<string, Asset[]>>({})
@@ -47,10 +50,10 @@ export function TimelineView() {
       setLoadingFlags(f => ({ ...f, loadYears: true }))
       try {
         const data = await api.timelineYears(selectedLibraryId || undefined)
-        setYears(data)
+        useGridStore.setState({ gridTimelineYears: data })
      } catch (e) {
        console.error('Failed to load timeline years:', e)
-        useStore.setState({ error: '无法加载年份数据: ' + ((e as any).message || e) })
+        useStore.setState({ error: t('timelineView.yearLoadFailed') + ': ' + ((e as any).message || e) })
      } finally {
         setLoadingFlags(f => ({ ...f, loadYears: false }))
       }
@@ -71,7 +74,7 @@ export function TimelineView() {
           setYearDays(prev => ({ ...prev, [year]: data }))
        } catch (e) {
          console.error('Failed to load days:', e)
-          useStore.setState({ error: '无法加载日期数据: ' + ((e as any).message || e) })
+          useStore.setState({ error: t('timelineView.dayLoadFailed') + ': ' + ((e as any).message || e) })
        } finally {
           setLoadingFlags(f => ({ ...f, [flagKey]: false }))
         }
@@ -93,7 +96,7 @@ export function TimelineView() {
      setDayAssets(prev => ({ ...prev, [key]: data }))
    } catch (e) {
      console.error('Failed to load assets:', e)
-      useStore.setState({ error: '无法加载资产数据: ' + ((e as any).message || e) })
+      useStore.setState({ error: t('timelineView.assetLoadFailed') + ': ' + ((e as any).message || e) })
    } finally {
       setLoadingFlags(f => ({ ...f, [flagKey]: false }))
     }
@@ -160,7 +163,7 @@ export function TimelineView() {
         })
      } catch (e) {
        console.error('Failed to refresh days:', e)
-        useStore.setState({ error: '无法刷新日期数据: ' + ((e as any).message || e) })
+        useStore.setState({ error: t('timelineView.refreshFailed') + ': ' + ((e as any).message || e) })
      }
     }
  }, [expandedYears, selectedLibraryId])
@@ -255,10 +258,10 @@ export function TimelineView() {
                                 <span className="text-xs text-gray-500">({dayCount})</span>
                                 {assets && assets.length > 0 && (
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); useStore.getState().selectAllAssets(assets.map(a => a.id)); }}
+                                    onClick={(e) => { e.stopPropagation(); useAssetStore.getState().selectAllAssets(assets.map(a => a.id)); }}
                                     className="ml-2 text-xs text-indigo-500 hover:text-indigo-400 transition-colors"
                                   >
-                                    全选当天
+                                    {t("timelineView.selectAllDay")}
                                   </button>
                                 )}
                               </div>
@@ -282,7 +285,7 @@ export function TimelineView() {
                                   ))}
                                 </div>
                               ) : !assets ? (
-                                    <div className="text-xs text-gray-500 pl-4 italic">滚动以加载...</div>
+                                    <div className="text-xs text-gray-500 pl-4 italic">{t("timelineView.scrollToLoad")}</div>
                               ) : null}
                             </div>
                           )
@@ -298,7 +301,6 @@ export function TimelineView() {
       </div>
 
       <YearTimeline
-        years={years}
         activeYear={visibleYear}
         activeDayKey={visibleDayKey}
         onYearClick={(year) => {

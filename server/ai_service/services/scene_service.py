@@ -52,7 +52,7 @@ def detect_scenes(video_path: str | Path) -> list[dict[str, Any]]:
     model = _load_transnet()
 
     with torch.no_grad():
-        _, _, preds_sim = model.predict_video(str(video_path), quiet=True)
+        _, preds_sim, _ = model.predict_video(str(video_path), quiet=True)
 
     video_fps = model.get_video_fps(str(video_path))
     total_predictions = len(preds_sim)
@@ -79,8 +79,10 @@ def detect_scenes(video_path: str | Path) -> list[dict[str, Any]]:
     if total_predictions > 0:
         segments.append((prev_frame, total_predictions))
 
-    # Merge short scenes (min_scene_len is in seconds, convert to frames)
-    min_frames = int(scene_cfg.min_scene_len * video_fps)
+   # Merge short scenes (min_scene_len is in seconds, convert to frames)
+    # Adaptive: cap min_scene_len at 10% of video duration for short videos
+    effective_min_scene_len = min(scene_cfg.min_scene_len, duration * 0.1)
+    min_frames = int(effective_min_scene_len * video_fps)
     if min_frames > 1 and segments:
         merged = [segments[0]]
         for seg in segments[1:]:

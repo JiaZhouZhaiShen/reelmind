@@ -8,6 +8,8 @@ class SearchQuery(BaseModel):
     tags: list[str] = []
     min_duration: float | None = None
     max_duration: float | None = None
+    min_file_size: int | None = None
+    max_file_size: int | None = None
     has_audio: bool | None = None
     file_types: list[str] = []
     sort_by: str = "relevance"  # relevance | date | duration | name

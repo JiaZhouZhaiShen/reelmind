@@ -1,18 +1,22 @@
 import { Eye, FileText, MessageSquareText, Tag, Volume2, Film, Brain } from "lucide-react"
-import { useStore } from "../../stores/app"
+import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
+import i18n from '../../i18n/config'
+import { useAdminStore } from "../../stores/admin"
 
 const MODELS_DEF = [
-  { key: "transnet", name: "TransNetV2", icon: Film, desc: "场景检测" },
-  { key: "clip", name: "OpenCLIP", icon: Eye, desc: "语义搜索" },
-  { key: "yolo", name: "YOLOv8n", icon: Tag, desc: "目标检测" },
-  { key: "ocr", name: "PaddleOCR", icon: FileText, desc: "文字识别" },
-  { key: "whisper", name: "faster-whisper", icon: MessageSquareText, desc: "语音识别" },
-  { key: "diarization", name: "pyannote", icon: Volume2, desc: "说话人识别" },
+  { key: "transnet", name: "TransNetV2", icon: Film, desc: i18n.t("aiModel.sceneDetection") },
+  { key: "clip", name: "OpenCLIP", icon: Eye, desc: i18n.t("aiModel.semanticSearch") },
+  { key: "yolo", name: "YOLOv8n", icon: Tag, desc: i18n.t("aiModel.objectDetection") },
+  { key: "ocr", name: "PaddleOCR", icon: FileText, desc: i18n.t("aiModel.textRecognition") },
+  { key: "whisper", name: "faster-whisper", icon: MessageSquareText, desc: i18n.t("aiModel.speechRecognition") },
+  { key: "diarization", name: "pyannote", icon: Volume2, desc: i18n.t("aiModel.speakerDiarization") },
 ]
 
-export function AIModelStatusCard() {
-  const sysStatus = useStore((s) => s.systemStatus)
-  const loading = useStore((s) => s.sysStatusLoading)
+export const AIModelStatusCard = memo(function AIModelStatusCard() {
+  const { t } = useTranslation()
+  const sysStatus = useAdminStore((s) => s.systemStatus)
+  const loading = useAdminStore((s) => s.sysStatusLoading)
   const models = sysStatus?.models ?? null
   const loadedCount = models ? Object.values(models).filter(Boolean).length : 0
   const totalCount = MODELS_DEF.length
@@ -26,7 +30,7 @@ export function AIModelStatusCard() {
             <Brain className="w-5 h-5 text-purple-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-gray-300">AI 引擎</h3>
+            <h3 className="text-sm font-semibold text-gray-300">{t("aiModel.title")}</h3>
             <p className="text-xs text-gray-500">AI Engine Status</p>
           </div>
         </div>
@@ -35,7 +39,7 @@ export function AIModelStatusCard() {
         ) : (
           <div className="text-right">
             <span className="text-lg font-bold text-gray-200">{loadedCount}<span className="text-sm text-gray-500">/{totalCount}</span></span>
-            <p className="text-[10px] text-gray-600">已加载</p>
+            <p className="text-[10px] text-gray-600">{t("aiModel.loaded")}</p>
           </div>
         )}
       </div>
@@ -94,7 +98,7 @@ export function AIModelStatusCard() {
                       ? "bg-gray-800 text-gray-500"
                       : "bg-gray-800 text-gray-600"
               }`}>
-                {loading ? "..." : isLoaded ? "已加载" : "未加载"}
+                {loading ? "..." : isLoaded ? t("aiModel.loaded") : t("aiModel.notLoaded")}
               </span>
             </div>
           )
@@ -102,4 +106,4 @@ export function AIModelStatusCard() {
       </div>
     </div>
   )
-}
+});

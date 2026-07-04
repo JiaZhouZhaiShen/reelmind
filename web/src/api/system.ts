@@ -1,5 +1,62 @@
 import { request } from './base';
-import type { SystemStats, AdminSettingValue, AdminDashboard, SystemStatus, AdminUser, AdminJob, MetadataFieldListResponse } from './client';
+import type { AdminSettingValue, AdminDashboard, SystemStatus, AdminUser, AdminJob } from './logs';
+
+export interface Library {
+  id: string;
+  name: string;
+  description?: string;
+  is_external: boolean;
+  import_mode: string;
+  auto_scan: boolean;
+  settings?: Record<string, unknown>;
+  total_assets: number;
+  total_size_bytes: number;
+  total_duration_seconds: number;
+  created_at: string;
+  updated_at: string;
+  paths: string[];
+  path_details?: { id: string; path: string }[];
+}
+export interface LibrarySettings {
+  custom_video_extensions?: string[];
+  excluded_extensions?: string[];
+  [key: string]: unknown;
+}
+export interface SystemStats {
+  total_assets: number;
+  total_libraries: number;
+  total_size_bytes: number;
+  total_duration_seconds: number;
+  pending_jobs: number;
+  libraries: Library[];
+}
+export interface MetadataFieldDef {
+  key: string;
+  label: string;
+  description: string;
+  category: string;
+  group: string;
+}
+export interface MetadataFieldListResponse {
+  fields: MetadataFieldDef[];
+  groups: string[];
+}
+export interface ScanStatus {
+  status: string;
+  total: number;
+  completed: number;
+  failed: number;
+  paused: boolean;
+  current_video: { video_id: string; file_name: string } | null;
+  current_stage: string;
+  current_progress: number;
+  overall_progress: number;
+  message: string;
+  skipped: number;
+  current_index: number;
+  model_progress: Record<string, { current: number; total: number }>;
+  videos: any[];
+}
 
 export function ping(): Promise<{ status: string; app: string; version: string }> {
   return request('/ping');

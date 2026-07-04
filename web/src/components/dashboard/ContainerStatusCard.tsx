@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, memo } from "react"
+import { useTranslation } from "react-i18next"
 import { Box, Cpu, MemoryStick, Activity } from "lucide-react"
-import { useStore } from "../../stores/app"
+import { useAdminStore } from "../../stores/admin"
 
 interface Props {
   name: string
@@ -8,9 +9,10 @@ interface Props {
   icon?: "server" | "ai"
 }
 
-export function ContainerStatusCard({ name, label, icon = "server" }: Props) {
-  const sysStatus = useStore((s) => s.systemStatus)
-  const loading = useStore((s) => s.sysStatusLoading)
+export const ContainerStatusCard = memo(function ContainerStatusCard({ name, label, icon = "server" }: Props) {
+  const { t } = useTranslation()
+  const sysStatus = useAdminStore((s) => s.systemStatus)
+  const loading = useAdminStore((s) => s.sysStatusLoading)
   const data = name === "server" ? (sysStatus?.containers?.server ?? null) : (sysStatus?.containers?.ai ?? null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const prevCpuRef = useRef(0)
@@ -105,7 +107,6 @@ export function ContainerStatusCard({ name, label, icon = "server" }: Props) {
 
   const isRunning = status === "running"
   const memColor = displayMemPct < 50 ? "from-emerald-400 to-cyan-400" : displayMemPct < 80 ? "from-amber-400 to-orange-400" : "from-red-400 to-rose-500"
-  const cpuDisplay = loading ? "..." : displayCpuPct.toFixed(1) + "%"
   const memDisplay = loading ? "..." : memMb.toFixed(0) + " / " + memLimit.toFixed(0) + " MB"
   const statusDot = loading ? "bg-yellow-500 animate-pulse" : isRunning ? "bg-emerald-500 shadow-sm shadow-emerald-500/40" : "bg-red-500"
 
@@ -124,7 +125,7 @@ export function ContainerStatusCard({ name, label, icon = "server" }: Props) {
             <h3 className="text-sm font-semibold text-gray-300">{label}</h3>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${statusDot}`} />
-              <span className="text-xs text-gray-500 capitalize">{loading ? "检测中" : status}</span>
+              <span className="text-xs text-gray-500 capitalize">{loading ? t("containerStatus.checking") : status}</span>
             </div>
           </div>
         </div>
@@ -153,7 +154,7 @@ export function ContainerStatusCard({ name, label, icon = "server" }: Props) {
             <div className="flex items-center justify-between text-xs mb-1.5">
               <span className="text-gray-400 flex items-center gap-1.5">
                 <MemoryStick className="w-3.5 h-3.5 text-cyan-400" />
-                内存
+                {t("containerStatus.memory")}
               </span>
               <span className="text-gray-300 font-mono text-xs">{memDisplay}</span>
             </div>
@@ -167,14 +168,14 @@ export function ContainerStatusCard({ name, label, icon = "server" }: Props) {
           <div className="flex items-center gap-2 pt-1">
             <Activity className="w-3.5 h-3.5 text-gray-600" />
             <span className={`text-xs ${loading ? "text-gray-600" : (isRunning ? "text-emerald-500" : "text-red-500")}`}>
-              {loading ? "检测中..." : isRunning ? "运行中" : "已停止"}
+              {loading ? t("containerStatus.checkingDot") : isRunning ? t("containerStatus.running") : t("containerStatus.stopped")}
             </span>
           </div>
         </div>
       </div>
     </div>
   )
-}
+});
 
 
 

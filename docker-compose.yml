@@ -147,15 +147,9 @@ services:
     logging: *default-logging
     restart: always
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-reelmind}
-      DB_PASSWORD: ${DB_PASSWORD:-reelmind}
-      DB_NAME: ${DB_NAME:-reelmind}
       ORCHESTRATOR_POLL_INTERVAL: ${ORCHESTRATOR_POLL_INTERVAL:-5}
       ORCHESTRATOR_JOB_TIMEOUT: ${ORCHESTRATOR_JOB_TIMEOUT:-180}
       ORCHESTRATOR_MAX_RETRIES: ${ORCHESTRATOR_MAX_RETRIES:-3}
-      ORCHESTRATOR_BATCH_SIZE: ${ORCHESTRATOR_BATCH_SIZE:-5}
       TZ: Asia/Shanghai
     depends_on:
       postgres:

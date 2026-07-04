@@ -31,7 +31,7 @@
 
 ### API & Extensibility
 - **REST API** — Full-featured JSON API for external tools and AI agents
-- **Async Jobs** — Celery-based background task processing
+- **Async Jobs** — Orchestrator-based job scheduling
 - **Webhooks** — Event notifications for integrations (planned)
 
 ## Quick Start
@@ -67,8 +67,8 @@ uvicorn app.main:app --reload --port 2588
 
 # Frontend
 cd web
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 ## Configuration
@@ -87,7 +87,7 @@ Copy `.env.example` to `.env` and configure:
 
 ## API
 
-Full API documentation at [docs/API.md](docs/API.md).  
+Full API documentation available via server endpoints.  
 Key endpoints:
 
 - `GET /api/ping` — Health check
@@ -124,7 +124,7 @@ MIT
 Web UI (React) ↔ FastAPI REST API (reelmind-server)
                                   ↔ PostgreSQL (pgvector)
                                   ↔ Redis (cache + progress pub-sub)
-                                  ↔ Celery (background jobs, reelmind-worker)
+                                  ↔ reelmind-orchestrator (job scheduler)
                                   ↔ reelmind-ai (GPU AI pipeline via HTTP)
 ```
 
@@ -135,8 +135,7 @@ AI 推理管线从主 API 服务器分离为独立容器 `reelmind-ai`，自有 
 | 容器 | 镜像 | GPU | 职责 |
 |------|------|-----|------|
 | `reelmind-server` | `server/Dockerfile.slim` | ❌ | API HTTP 代理、scan-library、auto-run 调度 |
-| `reelmind-worker` | `server/Dockerfile.slim` | ❌ | Celery 非 AI 后台任务 |
-| `reelmind-beat` | `server/Dockerfile.slim` | ❌ | Celery 定时调度 |
+| **`reelmind-orchestrator`** | **`server/orchestrator/Dockerfile`** | **❌** | **轻量作业调度器（替代 Celery Beat）** |
 | **`reelmind-ai`** | **`server/ai_service/Dockerfile`** | **✅** | **管线编排 + 5 个 AI 模型** |
 | `reelmind-postgres` | pgvector/pg16 | — | 主数据库（资产元数据 + pgvector） |
 | `reelmind-redis` | redis:7-alpine | — | 缓存、队列、进度推送 |
@@ -179,11 +178,11 @@ AI 结果写入共享 SQLite 数据库（`reelmind_ai.db`），`reelmind-server`
 ┌─────────────────────────────────────────────────────────────┐
 │                    Docker Compose (reelmind)                │
 │                                                             │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐    │
-│  │ reelmind-    │   │ reelmind-    │   │ reelmind-    │    │
-│  │ server       │   │ worker       │   │ beat         │    │
-│  │ (slim,noGPU) │   │ (slim,noGPU) │   │ (slim,noGPU) │    │
-│  └──────┬───────┘   └──────┬───────┘   └──────┬───────┘    │
+│  ┌──────────────┐   ┌──────────────────┐   ┌──────────────┐    │
+│  │ reelmind-    │   │ reelmind-         │   │ reelmind-    │    │
+│  │ server       │   │ orchestrator      │   │ ai (GPU)     │    │
+│  │ (slim,noGPU) │   │ (CPU scheduler)   │   │ (CUDA 12.4)  │    │
+│  └──────┬───────┘   └──────────────────┘   └──────┬───────┘    │
 │         │                  │                  │             │
 │         │    ┌─────────────▼──────────┐       │             │
 │         │    │   reelmind-ai (GPU)     │       │             │
@@ -210,4 +209,4 @@ AI 结果写入共享 SQLite 数据库（`reelmind_ai.db`），`reelmind-server`
 | `ENABLE_CLIP` | `false` | 启用 CLIP 语义搜索 |
 | `HUGGINGFACE_TOKEN` | — | HuggingFace 令牌（pyannote 说话人分离需要） |
 | `AI_SERVICE_URL` | `http://reelmind-ai:2589` | AI 容器地址（server 自动设定） |
-| `AI_MEM_LIMIT` | `4g` | AI 容器内存上限 |
+| `AI_MEM_LIMIT` | `4g` | AI 容器内存上�

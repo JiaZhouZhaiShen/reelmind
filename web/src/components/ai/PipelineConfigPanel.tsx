@@ -1,8 +1,11 @@
+import { useStore } from "../../stores/app"
 import { useState, useEffect } from "react"
 import {
   Play, Save, Video, Search, Type, Camera, Mic, Users,
-  Loader2, CheckCircle2, XCircle, Filter, AlertTriangle, RefreshCw,
+  Loader2, CheckCircle2, XCircle, Filter, AlertTriangle,
 } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { BatchProgressSection } from "./BatchProgressSection"
 import * as api from "../../api/ai"
 import type { BatchCheckpointInfo } from "../../types/ai"
 
@@ -16,8 +19,6 @@ const ALL_ENGINES = [
   { id: "transcript", label: "转录", icon: Mic },
   { id: "diarization", label: "说话人分离", icon: Users },
 ]
-
-const TAB_LABELS: Record<Tab, string> = { manual: "手动批量", auto: "自动批量", single: "单视频" }
 
 const DEFAULTS = {
   manual: {
@@ -65,31 +66,29 @@ export function PipelineConfigPanel() {
   const [engineProgress, setEngineProgress] = useState<Record<string, Record<string, number>>>({})
   const [chunkSize, setChunkSize] = useState(0)
   const [resetting, setResetting] = useState(false)
-  const [resetMsg, setResetMsg] = useState<string | null>(null)
+  const { t } = useTranslation()
 
-  const ENGINE_NAMES: Record<string, string> = {
-    scene: "场景切割",
-    yolo: "YOLO",
-    ocr: "OCR",
-    clip: "CLIP",
-    transcript: "语音转文字",
-    diarization: "说话人分离",
-  }
-  const ENGINE_ORDER = ["scene", "yolo", "ocr", "clip", "transcript", "diarization"]
+
 
 
   const loadPendingCount = async (engines?: string[], max_file_size_mb?: number, max_duration_minutes?: number) => {
     try {
       const resp = await api.getPendingAssetCount(engines, max_file_size_mb, max_duration_minutes)
       setPendingCount(resp?.selected_pending ?? resp?.total_pending ?? null)
-    } catch { }
+    } catch (e) {
+      console.warn("Failed to load pending count", e)
+      useStore.getState().setError("Failed to load pending count")
+    }
   }
 
   const loadCheckpoints = async () => {
     try {
       const resp = await api.listBatchCheckpoints(5)
       setCheckpoints(resp.checkpoints || [])
-    } catch { }
+    } catch (e) {
+      console.warn("Failed to load checkpoints", e)
+      useStore.getState().setError("Failed to load checkpoints")
+    }
   }
 
   useEffect(() => {
@@ -136,7 +135,9 @@ export function PipelineConfigPanel() {
         const resp = await api.getBatchEngineProgress(runningCp.id)
         if (resp.engine_progress) setEngineProgress(resp.engine_progress)
         if (resp.chunk_size) setChunkSize(resp.chunk_size)
-      } catch {}
+      } catch (e) {
+        console.warn("Engine progress poll failed", e)
+      }
     }, 3000)
     return () => clearInterval(interval)
   }, [checkpoints])
@@ -165,22 +166,17 @@ export function PipelineConfigPanel() {
   }
 
   const handleResetErrors = async () => {
-    if (!window.confirm('确定要重置所有错误任务吗？此操作不可撤销。')) return;
-    setResetting(true)
-    setResetMsg(null)
-    try {
-      const result = await api.resetErrorJobs()
-      if (result.count > 0) {
-        setResetMsg(result.count.toString())
-        loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes)
-      } else {
-        setResetMsg('0')
-      }
-      setTimeout(() => setResetMsg(null), 3000)
-    } catch {
-      setResetMsg('error')
-      setTimeout(() => setResetMsg(null), 3000)
-    } finally {
+    if (!window.confirm(t('pipelineConfig.confirmReset'))) return;
+   setResetting(true)
+   try {
+     const result = await api.resetErrorJobs()
+     if (result.count > 0) {
+       loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes)
+     }
+   } catch (e) {
+     console.error("Failed to reset error jobs", e)
+     useStore.getState().setError("Failed to reset error jobs")
+   } finally {
       setResetting(false)
     }
   }
@@ -240,7 +236,7 @@ export function PipelineConfigPanel() {
                 : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/20")
             }
           >
-            {TAB_LABELS[tab]}
+            {t('pipelineConfig.tabs.' + tab)}
             {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500" />}
           </button>
         ))}
@@ -251,7 +247,7 @@ export function PipelineConfigPanel() {
         {loading ? (
           <div className="flex items-center justify-center py-8 text-gray-500">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
-            加载配置中...
+            {t('pipelineConfig.loading')}
           </div>
         ) : (
           <>
@@ -260,13 +256,13 @@ export function PipelineConfigPanel() {
               <div className="flex items-start gap-2 p-2.5 rounded-md bg-amber-900/30 border border-amber-700/40">
                 <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
                 <div className="text-xs text-amber-300/90 leading-relaxed">
-                  <span className="font-semibold text-amber-200">Whisper 模式已启用</span>
-                  — 转录 + 说话人分离需要加载 Whisper 大模型。<br />
+                  <span className="font-semibold text-amber-200">{t('pipelineConfig.whisperModeEnabled')}</span>
+                  {t('pipelineConfig.whisperDesc')}<br />
                   <span className="text-amber-400/80">
-                    5000 个视频约 <span className="font-bold text-amber-200">19 天</span>
-                    {" → "}关闭后降至约 <span className="font-bold text-amber-200">2 天</span>
+                    {t('pipelineConfig.estimatePrefix')} <span className="font-bold text-amber-200">19 {t('pipelineConfig.estimateDays')}</span>
+                    {" → "}{t('pipelineConfig.estimateSuffix')} <span className="font-bold text-amber-200">2 {t('pipelineConfig.estimateDays')}</span>
                   </span>
-                  <br />考虑关闭转录和说话人分离来大幅提速。
+                  <br />{t('pipelineConfig.whisperTip')}
                 </div>
               </div>
             )}
@@ -293,12 +289,12 @@ export function PipelineConfigPanel() {
                 />
               </div>
               <span className="text-sm text-gray-300 font-medium">
-                {isAuto ? "自动调度" : isSingle ? "单视频处理" : "手动批量处理"}{" "}
-                {cfg.enabled ? "已启用" : "已禁用"}
+                {isAuto ? t('pipelineConfig.modeAuto') : isSingle ? t('pipelineConfig.modeSingle') : t('pipelineConfig.modeManual')}{" "}
+                {cfg.enabled ? t('pipelineConfig.enabled') : t('pipelineConfig.disabled')}
               </span>
               {pendingCount !== null && !isSingle && (
                 <span className="text-xs text-gray-500 ml-auto">
-                  待处理: <span className="text-gray-400 font-mono">{pendingCount}</span> 个视频
+                  {t('pipelineConfig.pendingLabel')}: <span className="text-gray-400 font-mono">{pendingCount}</span> {t('pipelineConfig.pendingVideos')}
                 </span>
               )}
             </label>
@@ -306,7 +302,7 @@ export function PipelineConfigPanel() {
             {/* Engines */}
             <div>
               <label className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-2 block">
-                引擎选择
+                {t('pipelineConfig.engineSelect')}
               </label>
               <div className="flex flex-wrap gap-2">
                 {ALL_ENGINES.map((eng) => {
@@ -316,7 +312,7 @@ export function PipelineConfigPanel() {
                     <button
                       key={eng.id}
                       onClick={() => toggleEngine(eng.id)}
-                      title={eng.label}
+                      title={t('pipelineConfig.engines.' + eng.id + '.label')}
                       className={
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all " +
                         (selected
@@ -325,7 +321,7 @@ export function PipelineConfigPanel() {
                       }
                     >
                       <EngineIcon className="w-3.5 h-3.5" />
-                      {eng.label}
+                      {t('pipelineConfig.engines.' + eng.id + '.label')}
                       {eng.id === "transcript" && selected && (
                         <span className="text-[10px] text-amber-400/70 ml-0.5">(Whisper)</span>
                       )}
@@ -341,7 +337,7 @@ export function PipelineConfigPanel() {
             {/* Config Params */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-gray-400 block mb-1">每批数量</label>
+                <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.batchSize')}</label>
                 <input
                   type="number" min={1} max={500}
                   value={cfg.batch_size ?? 100}
@@ -351,7 +347,7 @@ export function PipelineConfigPanel() {
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-400 block mb-1">超时 (分钟)</label>
+                <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.timeout')}</label>
                 <input
                   type="number" min={1} max={1440}
                   value={cfg.timeout_minutes ?? 180}
@@ -363,7 +359,7 @@ export function PipelineConfigPanel() {
               {isAuto && (
                 <>
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">时间窗口起始 (UTC)</label>
+                    <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.timeWindowStart')}</label>
                     <input
                       type="number" min={0} max={23}
                       value={cfg.time_window_start ?? 0}
@@ -372,7 +368,7 @@ export function PipelineConfigPanel() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">时间窗口结束 (UTC)</label>
+                    <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.timeWindowEnd')}</label>
                     <input
                       type="number" min={0} max={23}
                       value={cfg.time_window_end ?? 6}
@@ -381,7 +377,7 @@ export function PipelineConfigPanel() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">GPU 阈值 (%)</label>
+                    <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.gpuThreshold')}</label>
                     <input
                       type="number" min={0} max={100}
                       value={cfg.gpu_threshold_percent ?? 50}
@@ -390,7 +386,7 @@ export function PipelineConfigPanel() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">检查间隔 (秒)</label>
+                    <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.checkInterval')}</label>
                     <input
                       type="number" min={5} max={600}
                       value={cfg.check_interval_seconds ?? 60}
@@ -406,11 +402,11 @@ export function PipelineConfigPanel() {
             <div className="border-t border-gray-800 pt-3">
               <label className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-2 flex items-center gap-1">
                 <Filter className="w-3.5 h-3.5" />
-                文件过滤（在 AI 容器侧执行）
+                {t('pipelineConfig.fileFilter')}
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 block mb-1">最大文件大小 (MB, 0=不限)</label>
+                  <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.maxFileSize')}</label>
                   <input
                     type="number" min={0}
                     value={cfg.filters?.max_file_size_mb ?? 0}
@@ -419,7 +415,7 @@ export function PipelineConfigPanel() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 block mb-1">最长视频时长 (分钟, 0=不限)</label>
+                  <label className="text-xs text-gray-400 block mb-1">{t('pipelineConfig.maxDuration')}</label>
                   <input
                     type="number" min={0}
                     value={cfg.filters?.max_duration_minutes ?? 0}
@@ -435,17 +431,17 @@ export function PipelineConfigPanel() {
               <div className="flex-1 min-w-0">
                 {saveMsg === "success" && (
                   <span className="text-xs text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 配置已保存
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {t('pipelineConfig.saved')}
                   </span>
                 )}
                 {saveMsg === "error" && (
                   <span className="text-xs text-red-400 flex items-center gap-1">
-                    <XCircle className="w-3.5 h-3.5" /> 保存失败
+                    <XCircle className="w-3.5 h-3.5" /> {t('pipelineConfig.saveFailed')}
                   </span>
                 )}
                 {startResult && startResult.status === "started" && (
                     <span className="text-xs text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> 已启动
+                      <CheckCircle2 className="w-3.5 h-3.5" /> {t('pipelineConfig.started')}
                     {startResult.batch_id && (
                         <span className="font-mono text-emerald-500/70 ml-1">
                         batch: {startResult.batch_id.slice(0, 8)}...
@@ -455,7 +451,7 @@ export function PipelineConfigPanel() {
                   )}
                 {startResult && startResult.status !== "started" && (
                     <span className="text-xs text-red-400 flex items-center gap-1">
-                      <XCircle className="w-3.5 h-3.5" /> {startResult.message || "启动失败"}
+                      <XCircle className="w-3.5 h-3.5" /> {startResult.message || t('pipelineConfig.startFailed')}
                     </span>
                   )}
               </div>
@@ -465,22 +461,22 @@ export function PipelineConfigPanel() {
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 transition-all"
               >
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                {saving ? "保存中..." : "保存配置"}
+                {saving ? t('pipelineConfig.saving') : t('pipelineConfig.save')}
               </button>
               {!isAuto && !isSingle && (
                 <button
                   onClick={handleStart}
                   disabled={starting || hasRunningBatch}
-                  title={hasRunningBatch ? "已有批处理任务正在运行" : "启动手动批量处理"}
+                  title={hasRunningBatch ? t('pipelineConfig.batchRunning') : t('pipelineConfig.startManual')}
                   className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 transition-all"
                 >
                   {starting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                  {starting ? "启动中..." : hasRunningBatch ? "已有任务运行中" : "立即开始"}
+                  {starting ? t('pipelineConfig.starting') : hasRunningBatch ? t('pipelineConfig.taskRunning') : t('pipelineConfig.startNow')}
                 </button>
               )}
             </div>
 
-            {/* 重置错误 - 危险操作 */}
+            {/* {t('pipelineConfig.resetErrors')} - 危险操作 */}
             <div className="mt-2 pt-2 border-t border-gray-800/40 flex justify-end">
               <button
                 onClick={handleResetErrors}
@@ -488,7 +484,7 @@ export function PipelineConfigPanel() {
                 className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
               >
                 {resetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <AlertTriangle className="w-3 h-3" />}
-                {resetting ? "重置中..." : "重置错误"}
+                {resetting ? t('pipelineConfig.resetting') : t('pipelineConfig.resetErrors')}
               </button>
             </div>
 
@@ -501,8 +497,7 @@ export function PipelineConfigPanel() {
               checkpoints={checkpoints}
               engineProgress={engineProgress}
               chunkSize={chunkSize}
-              ENGINE_NAMES={ENGINE_NAMES}
-              ENGINE_ORDER={ENGINE_ORDER}
+
             />
           </div>
         )}
@@ -512,176 +507,3 @@ export function PipelineConfigPanel() {
     </div>
   )
 }
-
-// ── Batch Progress Components ──
-
-function BlockBar({ completed, total, running }: { completed: number; total: number; running: number }) {
-  const BLOCKS = 20
-  const pct = total > 0 ? completed / total : 0
-  const filledBlocks = Math.round(pct * BLOCKS)
-  const inProgressBlock = running > 0 && filledBlocks < BLOCKS ? filledBlocks : -1
-
-  return (
-    <div className="flex gap-[2px] items-stretch h-full">
-      {Array.from({ length: BLOCKS }).map((_, i) => {
-        let cls = "w-2 h-3.5 rounded-[1px] "
-        if (i < filledBlocks) {
-          cls += "bg-emerald-500"
-        } else if (i === inProgressBlock) {
-          cls += "bg-emerald-400/70 animate-pulse"
-        } else {
-          cls += "bg-gray-700/50"
-        }
-        return <div key={i} className={cls} />
-      })}
-    </div>
-  )
-}
-
-function BatchProgressSection({
-  checkpoints,
-  engineProgress,
-  chunkSize,
-  ENGINE_NAMES,
-  ENGINE_ORDER,
-}: {
-  checkpoints: BatchCheckpointInfo[]
-  engineProgress: Record<string, Record<string, number>>
-  chunkSize: number
-  ENGINE_NAMES: Record<string, string>
-  ENGINE_ORDER: string[]
-}) {
-  const runningCp = checkpoints.find((cp) => cp.status === "running")
-  const displayCp = runningCp || checkpoints[0]
-  const isRunning = !!runningCp
-
- if (!displayCp) return null
-
- const pct = displayCp.total_videos > 0
-   ? Math.round((displayCp.processed / displayCp.total_videos) * 100)
-   : 0
- const totalChunks = Math.ceil(displayCp.total_videos / (displayCp.batch_size || 1))
- const currentChunk = Math.floor(displayCp.processed / (displayCp.batch_size || 1)) + 1
-  // Use engine progress to show smoother overall progress within a chunk
-  const completedInChunk = engineProgress?.scene?.completed || 0
-  const virtualProcessed = displayCp.processed + completedInChunk
-   const hasEngineProgress = engineProgress && Object.keys(engineProgress).length > 0 && 
-      Object.values(engineProgress).some((e: any) => (e.completed || 0) > 0 || (e.running || 0) > 0)
-
-  return (
-    <div className="rounded-lg border border-gray-700/40 bg-gray-800/40 p-3">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className={
-            "w-2 h-2 rounded-full " +
-            (isRunning ? "bg-emerald-500 animate-pulse" :
-             displayCp.status === "completed" ? "bg-emerald-500" :
-             displayCp.status === "error" ? "bg-red-500" : "bg-gray-500")
-          } />
-          <span className="text-sm font-semibold text-gray-200">
-            {displayCp.task_label} {displayCp.id.slice(0, 8)}
-          </span>
-          <span className={
-            "text-xs font-medium " +
-            (displayCp.status === "completed" ? "text-emerald-400" :
-             isRunning ? "text-emerald-300" :
-             displayCp.status === "error" ? "text-red-400" :
-             displayCp.status === "cancelled" ? "text-gray-400" : "text-gray-400")
-          }>
-            · {displayCp.status === "completed" ? "✓ \u5b8c\u6210" :
-               isRunning ? "\u8fd0\u884c\u4e2d" :
-               displayCp.status === "error" ? "\u5931\u8d25" :
-               displayCp.status === "cancelled" ? "\u5df2\u53d6\u6d88" : displayCp.status}
-          </span>
-        </div>
-        <button
-          onClick={() => window.location.reload()}
-          className="text-gray-500 hover:text-gray-300 transition-colors p-1"
-          title="刷新"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* Per-engine progress */}
-      {isRunning && hasEngineProgress && (
-        <div className="space-y-1.5 mb-3">
-          {ENGINE_ORDER.filter(e => engineProgress[e]).map((eng) => {
-            const e = engineProgress[eng]
-            const completed = e.completed || 0
-            const running = e.running || 0
-            const total = chunkSize || completed + running + (e.pending || 0) || 1
-            const statusLabel =
-              completed >= total ? "✓" :
-              running > 0 ? "处理中" :
-              completed > 0 ? "等待中" : "等待中"
-            const statusColor =
-              completed >= total ? "text-emerald-400" :
-              running > 0 ? "text-emerald-300" : "text-gray-500"
-            return (
-              <div key={eng} className="flex items-center gap-2">
-                <span className="w-14 text-xs text-gray-400 text-right shrink-0">{ENGINE_NAMES[eng] || eng}</span>
-                <div className="flex-1 h-full min-h-[18px]">
-                  <BlockBar completed={completed} total={total} running={running} />
-                </div>
-                <span className={"text-xs font-mono shrink-0 w-14 text-right " + statusColor}>
-                  {completed}/{total}
-                </span>
-                <span className={"text-xs shrink-0 w-12 text-right " + statusColor}>
-                  {statusLabel}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Between chunks */}
-      {isRunning && (!hasEngineProgress) && (
-        <div className="text-xs text-gray-500 mb-2.5 flex items-center gap-1.5">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          {displayCp.processed > 0 ? "\u51c6\u5907\u4e0b\u4e00批次..." : "等待 AI 处理..."}
-        </div>
-      )}
-
-    {/* Overall progress bar */}
-    <div className="w-full h-3 bg-gray-700/40 rounded-sm overflow-hidden mb-1.5">
-       <div
-         className={
-           "h-full transition-all duration-1000 ease-out " +
-           (displayCp.status === "completed" ? "bg-emerald-500" :
-            isRunning ? "bg-gradient-to-r from-emerald-600 to-emerald-400" :
-            displayCp.status === "cancelled" ? "bg-gray-500" :
-            "bg-emerald-500/60")
-         }
-          style={{
-            width: isRunning && chunkSize > 0
-              ? Math.min(100, Math.round((completedInChunk / chunkSize) * 100)) + "%"
-              : Math.min(100, Math.round((virtualProcessed / displayCp.total_videos) * 100)) + "%"
-          }}
-        />
-      </div>
-
-    {/* Summary line */}
-    <div className="text-xs text-gray-500">
-      {isRunning || displayCp.status === "cancelled" ? (
-        <>
-          <span>总 {virtualProcessed}/{displayCp.total_videos}</span>
-          {isRunning && chunkSize > 0 && (
-            <span className="text-gray-500"> · 本批 {completedInChunk}/{chunkSize} 完成 ({Math.round(completedInChunk / chunkSize * 100)}%)</span>
-          )}
-         </>
-        ) : displayCp.status === "completed" ? (
-          <>全部完成 · 共 {displayCp.total_videos} 个视频</>
-        ) : (
-          <>{displayCp.processed}/{displayCp.total_videos}</>
-        )}
-        
-
-      </div>
-    </div>
-
-  )
-}
-

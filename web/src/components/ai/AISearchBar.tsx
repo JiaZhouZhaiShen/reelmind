@@ -2,12 +2,12 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Sparkles, Zap } from "lucide-react"
-import { useStore } from "../../stores/app"
+import { useSearchStore } from '../../stores/search'
 
 export function AISearchBar() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const setSearchQuery = useStore((s) => s.setSearchQuery)
+  const setSearchQuery = useSearchStore((s) => s.setSearchQuery)
   const [searchInput, setSearchInput] = useState("")
 
   const handleSearch = () => {
@@ -21,7 +21,7 @@ export function AISearchBar() {
     <div className="bg-gray-900/30 rounded-lg border border-gray-800 p-4">
       <div className="flex items-center gap-2 mb-3">
         <Zap className="w-4 h-4 text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">搜索模块</h2>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{t('aiSearchBar.title')}</h2>
       </div>
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-xl">

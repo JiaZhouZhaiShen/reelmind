@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next"
+import { memo } from 'react'
 import { Cpu, Eye, FileText, MessageSquareText, Tag, Volume2, Film } from "lucide-react"
 import { useAIStore } from "../../stores/ai"
 
@@ -11,7 +12,7 @@ const modelList = [
   { name: "pyannote-audio", icon: Volume2, key: "diarization", desc: "" },
 ]
 
-export function AIModelStatus() {
+export const AIModelStatus = memo(function AIModelStatus() {
   const { t } = useTranslation()
   const modelStatus = useAIStore((s) => s.modelStatus)
   const modelStatusLoading = useAIStore((s) => s.modelStatusLoading)
@@ -32,7 +33,7 @@ export function AIModelStatus() {
     <div className="bg-gray-900/30 rounded-lg border border-gray-800 p-4">
       <div className="flex items-center gap-2 mb-3">
         <Cpu className="w-4 h-4 text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{t("aiEngine.modelStatus") || "模型状态"}</h2>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{t('aiModelStatus.title')}</h2>
         <span className="text-[10px] text-gray-600 ml-auto">Model Status</span>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -59,4 +60,4 @@ export function AIModelStatus() {
       )}
     </div>
   )
-}
+});

@@ -105,10 +105,44 @@ def save_manual_config(cfg: dict) -> None:
     _write_config("manual", merged)
 
 def get_auto_config() -> dict[str, Any]:
+    """Read auto config from PG (primary), fallback to JSON file."""
+    try:
+        from app.database import sync_session_factory
+        from app.models.pipeline_config import PipelineConfig
+        session = sync_session_factory()
+        try:
+            pg_config = session.query(PipelineConfig).filter(PipelineConfig.name == "auto").first()
+            if pg_config and pg_config.config:
+                merged = _deep_merge(_DEFAULT_AUTO, pg_config.config)
+                return merged
+        finally:
+            session.close()
+    except Exception as e:
+        logger.warning("Failed to read auto config from PG: %s, falling back to JSON", e)
     return _read_config("auto")
 
 def save_auto_config(cfg: dict) -> None:
     merged = _deep_merge(_DEFAULT_AUTO, cfg)
+    # Write to PG (primary)
+    try:
+        from app.database import sync_session_factory
+        from app.models.pipeline_config import PipelineConfig
+        session = sync_session_factory()
+        try:
+            pg_config = session.query(PipelineConfig).filter(PipelineConfig.name == "auto").first()
+            if pg_config:
+                pg_config.config = merged
+            else:
+                session.add(PipelineConfig(name="auto", config=merged))
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error("Failed to save auto config to PG: %s", e)
+    # Write to JSON file (backup)
     _write_config("auto", merged)
 
 def get_single_config() -> dict[str, Any]:

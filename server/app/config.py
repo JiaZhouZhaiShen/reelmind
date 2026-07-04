@@ -71,8 +71,6 @@ class Settings(BaseSettings):
     THUMBNAIL_QUALITY: int = 85
     PROXY_VIDEO_BITRATE: str = "2M"
     PROXY_VIDEO_MAX_WIDTH: int = 1280
-    SCENE_THRESHOLD: float = 27.0
-    ENABLE_AUTO_SCENE_DETECT: bool = True
 
     # --- AI / ML ---
     WHISPER_MODEL: str = "base"

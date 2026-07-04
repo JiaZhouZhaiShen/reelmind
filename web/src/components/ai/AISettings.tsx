@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next"
-import { Settings as SettingsIcon } from "lucide-react"
 
 interface Props {
   pipelineConfig: Record<string, boolean | number>

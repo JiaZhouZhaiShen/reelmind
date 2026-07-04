@@ -41,7 +41,7 @@ export function AIModelManage() {
     <div className="bg-gray-900/30 rounded-lg border border-gray-800 p-4">
       <div className="flex items-center gap-2 mb-3">
         <Wrench className="w-4 h-4 text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">模型管理</h2>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{t('aiModelManage.title')}</h2>
       </div>
       <div className="space-y-2">
         {resolvedModels.map((m) => {

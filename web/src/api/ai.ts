@@ -233,6 +233,54 @@ export function listBatchCheckpoints(limit: number = 20) {
 export function getBatchEngineProgress(batchId: string) {
   return request<any>('/ai/pipeline/batch/engine-progress/' + batchId)
 }
-export function resetErrorJobs() {
-  return request<{ count: number }>('/ai/pipeline/jobs/reset-errors', { method: 'POST' });
+ export function resetErrorJobs() {
+   return request<{ count: number }>('/ai/pipeline/jobs/reset-errors', { method: 'POST' });
+ }
+
+// Per-video results_ready (Rule ㉑: check SQLite actual data, not engine job status)
+export function getResultsReady(videoId: string) {
+  return request<{ video_id: string; state: string; jobs: Record<string, string>; results_ready: Record<string, boolean> }>('/ai/results-ready/' + videoId)
 }
+
+// Per-video engine job status
+export function getEngineJobStatus(videoId: string) {
+  return request<{ video_id: string; jobs: Record<string, string> }>('/ai/engine-jobs/' + videoId)
+}
+
+// Single-video pipeline
+export function startSinglePipeline(videoId: string) {
+  return request<{ status: string; task_id?: string; message?: string }>(
+    '/ai/pipeline/single/start',
+    { method: 'POST', body: JSON.stringify({ video_id: videoId }) },
+  )
+}
+
+// Single-video AI data reset
+export function resetSingleAssetAI(videoId: string) {
+    return request<{ status: string; deleted_engine_jobs?: number }>(
+      '/ai/pipeline/single/reset/' + videoId,
+      { method: 'POST' },
+    )
+  }
+
+ // ── AI Module Config (6 engine modules: scene, yolo, ocr, clip, whisper, diarization) ──
+
+ export function getModulesConfig() {
+   return request<{ config: Record<string, any> }>('/ai/modules/config')
+ }
+
+ export function saveModulesConfig(config: Record<string, any>) {
+   return request<{ status: string; config?: Record<string, any> }>('/ai/modules/config', {
+     method: 'POST', body: JSON.stringify({ config })
+   })
+ }
+
+ export function getSingleModuleConfig(module: string) {
+   return request<{ module: string; config: Record<string, any> }>('/ai/modules/config/' + module)
+ }
+
+ export function saveSingleModuleConfig(module: string, config: Record<string, any>) {
+   return request<{ status: string; module?: string; config?: Record<string, any> }>('/ai/modules/config/' + module, {
+     method: 'POST', body: JSON.stringify({ config })
+   })
+ }

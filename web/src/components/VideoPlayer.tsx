@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
-import { Play, Pause, Volume2, VolumeX, Maximize, Scissors, SkipBack, SkipForward, AlertCircle, RefreshCw, Monitor } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Maximize, PictureInPicture2, Camera, Keyboard, Scissors, SkipBack, SkipForward, AlertCircle, RefreshCw, Monitor } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useStore } from '../stores/app'
+import { useAssetStore } from '../stores/asset'
 import { api } from '../api/client'
 
 interface SourceDef {
@@ -22,8 +22,6 @@ interface VideoPlayerProps {
 
 // ── Constants ────────────────────────────────────────────────
 const IDLE_TIMEOUT_MS = 30000
-const MAX_CANVAS_HEIGHT_VH = 75
-const CANVAS_ASPECT = 16 / 9
 
 // ── Format support detection ─────────────────────────────────
 function pickSupportedSource(sources: SourceDef[]): SourceDef | null {
@@ -54,7 +52,7 @@ const planePool: DrawPlane = { ox: 0, oy: 0, dw: 0, dh: 0 }
 // ── Main component ───────────────────────────────────────────
 export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTimeUpdate, onSeek, className = '' }: VideoPlayerProps) {
   // 从 store 读取当前 asset，自行构建视频源和封面
-  const currentAsset = useStore(s => s.currentAsset)
+  const currentAsset = useAssetStore(s => s.currentAsset)
   const derivedSources = useMemo(() => {
     if (sources && sources.length > 0) return sources
     if (src) return [{ src, type: 'video/mp4' as const }]
@@ -106,6 +104,8 @@ export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTime
   const [resWarn, setResWarn] = useState(false)
   const [canvasReady, setCanvasReady] = useState(false)
   const [loading, setLoading] = useState(true)
+  const canvasAspect = 16 / 9
+  const [showShortcuts, setShowShortcuts] = useState(false)
 
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
@@ -114,32 +114,35 @@ export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTime
   const activeSource = sourceList.length > 0 ? pickSupportedSource(sourceList) : null
 
   // ═══════════════════════════════════════════════════════════
-  // 1. Canvas setup — fixed dimensions, created once
-  // ═══════════════════════════════════════════════════════════
+  // 1. ResizeObserver — sync canvas pixel dims to container CSS size
   useEffect(() => {
     const container = containerRef.current
     const canvas = canvasRef.current
     if (!container || !canvas) return
-
-    const rect = container.getBoundingClientRect()
-    const vh = window.innerHeight
-    const cw = Math.floor(Math.max(rect.width, 320))
-    const maxCh = Math.floor(vh * MAX_CANVAS_HEIGHT_VH / 100)
-    const ch = Math.floor(Math.min(cw / CANVAS_ASPECT, maxCh))
-
-    canvas.width = cw
-    canvas.height = ch
-    canvas.style.width = cw + 'px'
-    canvas.style.height = ch + 'px'
-
     const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })
-    if (ctx) {
-      ctxRef.current = ctx
-      ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, cw, ch)
-    }
+    if (ctx) ctxRef.current = ctx
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        const w = Math.floor(Math.max(width, 320))
+        const h = Math.floor(Math.max(height, 1))
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w
+          canvas.height = h
+          if (ctx) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h) }
+          if (posterCanvasRef.current && posterImgRef.current && ctx) {
+            computePlane(w, h, posterImgRef.current.naturalWidth, posterImgRef.current.naturalHeight, planePool)
+            ctx.fillStyle = '#000'
+            ctx.fillRect(0, 0, w, h)
+            ctx.drawImage(posterImgRef.current, planePool.ox, planePool.oy, planePool.dw, planePool.dh)
+          }
+        }
+      }
+    })
+    ro.observe(container)
     setCanvasReady(true)
-  }, [])
+    return () => ro.disconnect()
+    }, [])
 
   // ==============================================================================
   // 1b. Load poster image onto canvas before video loads
@@ -345,9 +348,9 @@ export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTime
       setVideoError(false)
       const vw = video.videoWidth
       const vh = video.videoHeight
-      const canvas = canvasRef.current
-      if (canvas && vw > 0 && vh > 0) {
-        setResWarn(vw > canvas.width * 2 || vh > canvas.height * 2)
+      if (vw > 0 && vh > 0) {
+        const canvas = canvasRef.current
+        if (canvas) { setResWarn(vw > canvas.width * 2 || vh > canvas.height * 2) }
       }
       drawFrame()
     }
@@ -469,6 +472,10 @@ export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTime
         case 'c': case 'C':
           if (transcript && transcript.length > 0) setShowTranscript(s => !s)
           break
+        case '?':
+          e.preventDefault()
+          setShowShortcuts(s => !s)
+          break
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -508,12 +515,38 @@ export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTime
   const currentCaption = transcript?.find(c => currentTime >= c.start && currentTime <= c.end)
 
   // ═══════════════════════════════════════════════════════════
+  // ── PiP ──
+  const handlePiP = useCallback(async () => {
+    const video = videoRef.current
+    if (!video || videoError) return
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture()
+      } else {
+        await video.requestPictureInPicture()
+      }
+    } catch (e) {
+      console.warn('PiP failed:', e)
+    }
+  }, [videoError])
+
+  // ── Screenshot ──
+  const handleScreenshot = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const link = document.createElement('a')
+    link.download = 'screenshot-' + (currentAsset?.id || Date.now()) + '.png'
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  }, [currentAsset])
+
+  // ═══════════════════════════════════════════════════════════
   // Render
   // ═══════════════════════════════════════════════════════════
   return (
     <div
       ref={containerRef}
-      className={'relative bg-black rounded-lg overflow-hidden group ' + className}
+      style={{ aspectRatio: canvasAspect }} className={'relative bg-black rounded-lg overflow-hidden group max-h-[55vh] max-w-full w-[calc(55vh_*_16_/_9)] mx-auto ' + className}
       onMouseMove={showCtrl}
       onMouseLeave={() => { if (playing) setControlsVisible(false) }}
       onTouchStart={showCtrl}
@@ -524,7 +557,7 @@ export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTime
         muted
         playsInline
         preload="metadata"
-        style={{ display: 'none' }}
+        style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none', overflow: 'hidden' }}
       >
         {sourceList.map((s, i) => (
           <source key={i} src={s.src} type={s.type} />
@@ -690,8 +723,38 @@ export function VideoPlayer({ src, sources, poster, transcript, seekTime, onTime
           <button onClick={() => containerRef.current?.requestFullscreen()} className="text-gray-400 hover:text-white transition-colors p-1" title="Fullscreen (F)">
             <Maximize className="w-4 h-4" />
           </button>
+          <button onClick={handlePiP} className="text-gray-400 hover:text-white transition-colors p-1" title="Picture in Picture (PiP)">
+            <PictureInPicture2 className="w-4 h-4" />
+          </button>
+          <button onClick={handleScreenshot} className="text-gray-400 hover:text-white transition-colors p-1" title="Screenshot">
+            <Camera className="w-4 h-4" />
+          </button>
         </div>
       </div>
+      {/* Shortcut help overlay */}
+      {showShortcuts && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-gray-900 rounded-lg border border-gray-800 p-5 max-w-xs w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-white">Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcuts(false)} className="text-gray-500 hover:text-white"><Keyboard className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-400">Play / Pause</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">Space</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Rewind 5s</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">&larr;</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Forward 5s</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">&rarr;</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Volume Up</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">&uarr;</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Volume Down</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">&darr;</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Fullscreen</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">F</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Mute</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">M</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Speed Down</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">,</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Speed Up</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">.</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">CC Toggle</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">C</kbd></div>
+              <div className="flex justify-between"><span className="text-gray-400">Shortcuts</span><kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-gray-300">?</kbd></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -13,6 +13,7 @@ export default function SystemSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
    const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
      scanning: true, indexing: true,
    })
@@ -48,12 +49,14 @@ export default function SystemSettingsPage() {
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(null)
     try {
       await api.updateAdminSettings(edits)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (e) {
       console.error("Failed to save settings:", e)
+      setSaveError(e instanceof Error ? e.message : "保存失败，请查看控制台")
     } finally {
       setSaving(false)
     }
@@ -137,6 +140,9 @@ export default function SystemSettingsPage() {
           {saving ? t("admin.saving") : saved ? t("admin.saved") : t("admin.saveSettings")}
         </button>
       </div>
+      {saveError && (
+        <div className="text-red-400 text-sm mt-2">{saveError}</div>
+      )}
 
 
 

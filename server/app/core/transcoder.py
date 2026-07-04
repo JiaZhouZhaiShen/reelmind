@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 from ..config import settings
+from ..core import settings_cache as _scache
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,8 @@ def generate_thumbnail(
         "-i", str(video_path),
         "-vframes", "1",
         "-s", f"{size[0]}x{size[1]}",
-        "-q:v", str(settings.THUMBNAIL_QUALITY),
+        "-q:v", str(_scache.get_int("thumbnail_quality", settings.THUMBNAIL_QUALITY)),
+        "-strict", "unofficial",
         str(out),
     ]
     try:

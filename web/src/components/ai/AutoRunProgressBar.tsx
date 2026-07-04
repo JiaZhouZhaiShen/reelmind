@@ -10,6 +10,7 @@ interface Props {
 export function AutoRunProgressBar({ totalPending, completed, failed, status }: Props) {
   const { t } = useTranslation()
   const progress = totalPending > 0 ? Math.round((completed + failed) / totalPending * 100) : 0
+  if (totalPending === 0 && completed === 0 && failed === 0) return null
 
   return (
     <div className="space-y-1">

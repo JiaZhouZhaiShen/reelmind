@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Folder, FolderOpen, ChevronRight, ChevronDown, Film, Loader2, ArrowUpDown, Download } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Folder, FolderOpen, ChevronRight, ChevronDown, Film, Loader2, ArrowUpDown } from 'lucide-react'
 import { api, type Asset } from '../api/client'
 import { useStore } from '../stores/app'
+import { useLibraryStore } from '../stores/library'
+import { useDirectoryStore } from '../stores/directory'
 import { VideoCard } from '../components/VideoCard'
 import { BatchToolbar } from '../components/BatchToolbar'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection'
+import { useTranslation } from 'react-i18next'
 
 // ═══════════════════════════════════════════════════════════════════════
 // Performance config — all tunable
@@ -72,6 +74,7 @@ function formatCount(n: number): string {
 
 
 export function DirectoryView() {
+  const { t } = useTranslation()
   const [assets, setAssets] = useState<Asset[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -81,12 +84,14 @@ export function DirectoryView() {
  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
  const [error, setError] = useState<string | null>(null)
   const [selectedPath, setSelectedPath] = useState('')
-  const [subdirs, setSubdirs] = useState<string[]>([])
-  const [tree, setTree] = useState<TreeNode[]>([])
-  const [treeLoading, setTreeLoading] = useState(true)
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
-  const selectedLibraryId = useStore((s) => s.selectedLibraryId)
+  const selectedLibraryId = useLibraryStore((s) => s.selectedLibraryId)
 
+  const dirTree = useDirectoryStore((s) => s.dirTree)
+  const dirTreeLoading = useDirectoryStore((s) => s.dirTreeLoading)
+  const dirSubdirs = useDirectoryStore((s) => s.dirSubdirs)
+  const loadDirTree = useDirectoryStore((s) => s.loadDirTree)
+  const setDirSubdirs = useDirectoryStore((s) => s.setDirSubdirs)
   // ── Refs ──
   const scrollRef = useRef<HTMLDivElement>(null)
   const contRef = useRef<HTMLDivElement>(null)
@@ -113,21 +118,12 @@ export function DirectoryView() {
     return () => ro.disconnect()
   }, [])
 
-  // ── 加载目录树 ──
-  const loadTree = useCallback(async () => {
-    setTreeLoading(true)
-    try {
-      const data = await api.directoryTree(selectedLibraryId || undefined)
-      setTree(data as TreeNode[])
-   } catch (e) {
-     console.error('Failed to load directory tree:', e)
-      setError('无法加载目录树: ' + ((e as any).message || e))
-   } finally {
-      setTreeLoading(false)
-    }
-  }, [selectedLibraryId])
+  useEffect(() => {
+    loadDirTree().catch((e) => {
+      setError(t('directoryView.treeLoadFailed') + ': ' + ((e as any).message || e))
+    })
+  }, [loadDirTree])
 
-  useEffect(() => { loadTree() }, [loadTree])
 
   // ── 分页加载某路径的视频 ──
   const fetchPathPage = useCallback(
@@ -157,7 +153,7 @@ export function DirectoryView() {
         setHasMore(items.length >= PAGE_SIZE && p * PAGE_SIZE < r.total)
         setPage(p)
       } catch (e: any) {
-        setError(e?.message || '加载失败')
+        setError(e?.message || t('directoryView.loadFailed'))
       } finally {
         setInitLoading(false)
         setMoreLoading(false)
@@ -170,7 +166,7 @@ export function DirectoryView() {
   const handleFolderClick = useCallback(
     async (path: string) => {
       setSelectedPath(path)
-      setSubdirs([])
+      setDirSubdirs([])
       setAssets([])
       setPage(1)
       setHasMore(true)
@@ -180,10 +176,10 @@ export function DirectoryView() {
           api.browsePathDirectories(path, selectedLibraryId || undefined),
           fetchPathPage(path, 1, false),
         ])
-        setSubdirs(dirData)
+        setDirSubdirs(dirData)
      } catch (e) {
        console.error('Failed to load path:', e)
-        setError('无法加载文件夹: ' + ((e as any).message || e))
+        setError(t('directoryView.folderLoadFailed') + ': ' + ((e as any).message || e))
      }
     },
     [selectedLibraryId, fetchPathPage],
@@ -193,7 +189,7 @@ export function DirectoryView() {
   const loadNext = useCallback(() => {
     if (moreLoading || !hasMore || initLoading || !selectedPath) return
     fetchPathPage(selectedPath, page + 1, true).catch((e) => {
-      setError('加载下一页失败: ' + ((e as any).message || e))
+      setError(t('directoryView.nextPageFailed') + ': ' + ((e as any).message || e))
     })
   }, [page, moreLoading, hasMore, initLoading, selectedPath, fetchPathPage])
 
@@ -245,7 +241,7 @@ export function DirectoryView() {
     return result
   }
 
-  const flatList = buildFlatList(tree)
+  const flatList = buildFlatList(dirTree)
 
   // ── 面包屑 ──
   const breadcrumbParts = selectedPath ? selectedPath.split('/').filter(Boolean) : []
@@ -288,10 +284,10 @@ export function DirectoryView() {
         <div className="p-4 border-b border-gray-800">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
             <Folder className="w-4 h-4" />
-            <span>文件夹</span>
+            <span>{t('directoryView.folder')}</span>
           </h2>
         </div>
-       {treeLoading ? (
+       {dirTreeLoading ? (
           <div className="py-4 space-y-0.5">
             {Array.from({ length: 8 }, (_, i) => (
               <div key={i} className="flex items-center gap-2 px-4 py-2 animate-pulse">
@@ -303,7 +299,7 @@ export function DirectoryView() {
        ) : flatList.length === 0 ? (
           <div className="p-4 text-sm text-gray-500 text-center py-12">
             <Folder className="w-8 h-8 mx-auto mb-2 text-gray-500" />
-            <p>暂无文件夹</p>
+            <p>{t('directoryView.noFolders')}</p>
           </div>
         ) : (
           <div className="py-2">
@@ -354,11 +350,11 @@ export function DirectoryView() {
         className="flex-1 flex flex-col min-w-0 overflow-hidden max-w-7xl mx-auto w-full"
         style={{ contain: 'layout size style' }}
       >
-        {!selectedPath && !treeLoading && (
+        {!selectedPath && !dirTreeLoading && (
           <div className="flex flex-col items-center justify-center flex-1 text-gray-500">
             <Folder className="w-16 h-16 mb-4 text-gray-500" />
-            <p className="text-lg text-gray-400 mb-1">请选择一个文件夹</p>
-            <p className="text-sm text-gray-500">从左侧目录树选择要浏览的文件夹</p>
+            <p className="text-lg text-gray-400 mb-1">{t('directoryView.selectFolder')}</p>
+            <p className="text-sm text-gray-500">{t('directoryView.selectFolderHint')}</p>
           </div>
         )}
 
@@ -368,7 +364,7 @@ export function DirectoryView() {
             {breadcrumbParts.length > 0 && (
               <div className="flex items-center gap-1.5 px-4 pt-4 pb-2 text-sm text-gray-400 flex-wrap shrink-0">
                  <button onClick={() => handleFolderClick('')} className="hover:text-gray-200 transition-colors">
-                  根目录
+                  {t('directoryView.rootDir')}
                 </button>
                 {breadcrumbParts.map((part, idx) => (
                   <span key={idx} className="flex items-center gap-1.5">
@@ -389,21 +385,21 @@ export function DirectoryView() {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors"
                 >
                   <ArrowUpDown className="w-4 h-4" />
-                  <span className="text-xs">{sortOrder === 'asc' ? '最早' : '最新'}</span>
+                  <span className="text-xs">{sortOrder === 'asc' ? t('directoryView.sortOldest') : t('directoryView.sortNewest')}</span>
                 </button>
                 {!initLoading && (
                   <span className="text-xs text-gray-500">
-                    共 {formatCount(total)} 个视频 — 已加载 {formatCount(assets.length)}
+                    {t('directoryView.total')} {formatCount(total)} {t('directoryView.videos')} — {t('directoryView.loaded')} {formatCount(assets.length)}
                   </span>
                 )}
               </div>
             </div>
 
             {/* ── 子目录按钮 ── */}
-            {subdirs.length > 0 && (
+            {dirSubdirs.length > 0 && (
               <div className="px-4 pb-3 shrink-0">
                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {subdirs.map((dir) => (
+                  {dirSubdirs.map((dir) => (
                     <button
                       key={dir}
                       onClick={() => handleFolderClick(
@@ -502,10 +498,10 @@ export function DirectoryView() {
                             {moreLoading ? (
                               <>
                                 <Loader2 className="w-5 h-5 animate-spin text-indigo-400 mr-2" />
-                                <span className="text-sm text-gray-400">加载中...</span>
+                                <span className="text-sm text-gray-400">{t('directoryView.loading')}</span>
                               </>
                             ) : (
-                              <span className="text-sm text-gray-400">滚动加载更多...</span>
+                              <span className="text-sm text-gray-400">{t('directoryView.scrollMore')}</span>
                             )}
                           </div>
                         )}
@@ -520,7 +516,7 @@ export function DirectoryView() {
             {empty && (
               <div className="flex flex-col items-center justify-center flex-1 text-gray-500 px-4 pb-4">
                 <Film className="w-12 h-12 mb-3 text-gray-500" />
-                <p className="text-gray-400">此文件夹中没有视频</p>
+                <p className="text-gray-400">{t('directoryView.emptyFolderDesc')}</p>
               </div>
             )}
           </>

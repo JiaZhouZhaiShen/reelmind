@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useStore } from '../stores/app'
+import { useAssetStore } from '../stores/asset'
 
 /**
  * Ctrl+Drag marquee (框选) selection for any page with `[data-asset-id]` elements.
@@ -42,7 +42,7 @@ export function useMarqueeSelection(containerRef: React.RefObject<HTMLDivElement
       s.lastX = e.clientX
       s.lastY = e.clientY
       s.ctrlHeld = isCtrl
-      s.initialSelection = [...useStore.getState().selectedAssetIds]
+      s.initialSelection = [...useAssetStore.getState().selectedAssetIds]
 
       const overlay = document.createElement('div')
       overlay.className = 'marquee-overlay'
@@ -146,9 +146,9 @@ export function useMarqueeSelection(containerRef: React.RefObject<HTMLDivElement
               newSel.add(id)
             }
           }
-          useStore.getState().selectAllAssets(Array.from(newSel))
+          useAssetStore.getState().selectAllAssets(Array.from(newSel))
         } else {
-          useStore.getState().selectAllAssets(intersectedIds)
+          useAssetStore.getState().selectAllAssets(intersectedIds)
         }
       }
 
