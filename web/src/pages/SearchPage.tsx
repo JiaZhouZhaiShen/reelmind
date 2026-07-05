@@ -386,10 +386,10 @@ export function SearchPage() {
             <span>{t('searchPage.trySearch')}</span>
             <button onClick={() => { setSearchQuery("Car"); navigate("/search"); }}
               className="py-1.5 px-3 rounded-lg border border-gray-700/50 text-gray-400 hover:border-gray-500 hover:text-gray-300 cursor-pointer transition-colors">Car</button>
-            <button onClick={() => { setSearchQuery("House"); navigate("/search"); }}
-              className="py-1.5 px-3 rounded-lg border border-gray-700/50 text-gray-400 hover:border-gray-500 hover:text-gray-300 cursor-pointer transition-colors">House</button>
-            <button onClick={() => { setSearchQuery("Sun"); navigate("/search"); }}
-              className="py-1.5 px-3 rounded-lg border border-gray-700/50 text-gray-400 hover:border-gray-500 hover:text-gray-300 cursor-pointer transition-colors">Sun</button>
+            <button onClick={() => { setSearchQuery("Person"); navigate("/search"); }}
+              className="py-1.5 px-3 rounded-lg border border-gray-700/50 text-gray-400 hover:border-gray-500 hover:text-gray-300 cursor-pointer transition-colors">Person</button>
+            <button onClick={() => { setSearchQuery("Cake"); navigate("/search"); }}
+              className="py-1.5 px-3 rounded-lg border border-gray-700/50 text-gray-400 hover:border-gray-500 hover:text-gray-300 cursor-pointer transition-colors">Cake</button>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
-export const BASE = '/api';
+ // In dev mode, use absolute URL to bypass Vite proxy issues in some browsers
+ export const BASE = import.meta.env.DEV ? 'http://localhost:2588/api' : '/api';
 
 const TOKEN_KEY = 'reelmind_token';
 

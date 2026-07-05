@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Menu, Film, Heart, Library, Search, BarChart3, Settings, User, LogOut, Shield, UserCircle, Languages, Tags, Tag, Users, Activity, Calendar, FolderTree, Sparkles, FileText } from 'lucide-react'
+import { Menu, Film, Heart, Library, Search, BarChart3, Settings, User, LogOut, Shield, UserCircle, Languages, Tags, Tag, Users, Activity, Calendar, FolderTree, Sparkles, FileText, Scan } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useLibraryStore } from '../stores/library'
@@ -95,6 +95,13 @@ export const Sidebar = memo(function Sidebar() {
         >
           <Tags className="w-4 h-4" />
           <span className="sl">{t('sidebar.browseTags')}</span>
+        </button>
+        <button
+          onClick={() => { if (showFavorites) toggleShowFavorites(); selectLibrary(null); navigate('/yolo-tags/browse') }}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname.startsWith('/yolo-tags/browse') ? 'bg-amber-600/20 text-amber-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
+        >
+          <Scan className="w-4 h-4" />
+          <span className="sl">YOLO 标签</span>
         </button>
 
         {/* Timeline */}

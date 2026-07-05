@@ -233,6 +233,89 @@ async def get_scene_tags(video_id: str):
         return {"tags": cloud}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@router.get("/tags/yolo/browse")
+async def yolo_tags_browse(search: str = "", sort: str = "count"):
+    """Aggregate scene_tags across all videos for YOLO tag browsing."""
+    try:
+        from app.models.ai import SceneTag, Scene, get_ai_session
+        from sqlalchemy import func
+        session = get_ai_session()
+        query = session.query(
+            SceneTag.label,
+            func.count(SceneTag.id).label("total_count"),
+            func.count(func.distinct(SceneTag.scene_id)).label("scene_count"),
+            func.count(func.distinct(Scene.video_id)).label("video_count"),
+            func.avg(SceneTag.confidence).label("avg_confidence"),
+        ).join(Scene, Scene.id == SceneTag.scene_id)
+        if search:
+            query = query.filter(SceneTag.label.contains(search))
+        query = query.group_by(SceneTag.label)
+        if sort == "alpha":
+            query = query.order_by(SceneTag.label)
+        else:
+            query = query.order_by(func.count(SceneTag.id).desc())
+        rows = query.all()
+        session.close()
+        labels = [
+            {"label": r.label, "total_count": r.total_count,
+             "scene_count": r.scene_count, "video_count": r.video_count,
+             "avg_confidence": round(float(r.avg_confidence), 4)}
+            for r in rows
+        ]
+        return {"labels": labels, "total": len(labels)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tags/yolo/browse/{label}/videos")
+async def yolo_tag_videos(label: str, page: int = 1, page_size: int = 200):
+    """Get videos containing a specific YOLO label."""
+    try:
+        import uuid
+        from app.models.ai import SceneTag, Scene, get_ai_session
+        from app.models.asset import Asset
+        from app.database import sync_session_factory
+        from sqlalchemy import func
+        ai_session = get_ai_session()
+        # First, get total count
+        total = ai_session.query(
+            func.count(func.distinct(Scene.video_id))
+        ).select_from(SceneTag
+        ).join(Scene, Scene.id == SceneTag.scene_id
+        ).filter(SceneTag.label == label
+        ).scalar() or 0
+
+        rows = ai_session.query(
+            Scene.video_id,
+            func.count(SceneTag.id).label("tag_count"),
+            func.count(func.distinct(SceneTag.scene_id)).label("scene_count"),
+        ).join(Scene, Scene.id == SceneTag.scene_id
+        ).filter(SceneTag.label == label
+        ).group_by(Scene.video_id
+        ).order_by(func.count(SceneTag.id).desc()
+        ).limit(page_size).offset((page - 1) * page_size).all()
+        ai_session.close()
+        video_ids = [uuid.UUID(r.video_id) for r in rows]
+        pg_session = sync_session_factory()
+        assets = pg_session.query(Asset).filter(Asset.id.in_(video_ids)).all()
+        asset_map = {str(a.id): a for a in assets}
+        pg_session.close()
+        results = []
+        for r in rows:
+            a = asset_map.get(r.video_id)
+            results.append({
+                "id": r.video_id,
+                "file_name": a.file_name if a else "",
+                "duration": a.duration if a else 0,
+                "thumbnail_path": a.thumbnail_path if a else "",
+                "tag_count": r.tag_count,
+                "scene_count": r.scene_count,
+            })
+        return {"assets": results, "total": total}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 @router.get("/progress/{video_id}")

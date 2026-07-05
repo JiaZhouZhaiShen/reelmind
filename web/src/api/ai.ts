@@ -284,3 +284,20 @@ export function resetSingleAssetAI(videoId: string) {
      method: 'POST', body: JSON.stringify({ config })
    })
  }
+
+// ── YOLO Tag Browse ──
+
+export function getYoloTagBrowse(search?: string, sort?: string) {
+  const params = new URLSearchParams()
+  if (search) params.set('search', search)
+  if (sort) params.set('sort', sort)
+  const qs = params.toString()
+  return request<{ labels: Array<{ label: string; total_count: number; scene_count: number; video_count: number; avg_confidence: number }>; total: number }>('/ai/tags/yolo/browse' + (qs ? `?${qs}` : ''))
+}
+
+export function getYoloTagVideos(label: string, page?: number) {
+  const params = new URLSearchParams()
+  if (page) params.set('page', String(page))
+  const qs = params.toString()
+  return request<{ assets: Array<{ id: string; file_name: string; duration: number; thumbnail_path: string; tag_count: number; scene_count: number }>; total: number }>('/ai/tags/yolo/browse/' + encodeURIComponent(label) + '/videos' + (qs ? `?${qs}` : ''))
+}

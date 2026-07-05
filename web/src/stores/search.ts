@@ -140,17 +140,22 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       for (const r of result.results) {
         searchById[r.id] = toPseudoAsset(r)
       }
-     const appState = useAppStore.getState()
+       const appState = useAppStore.getState()
      if (append) {
-      set({ searchResults: [...get().searchResults, ...result.results], searchTotal: result.total })
+       const existing = get().searchResults
+       const existingIds = new Set(existing.map(r => r.id))
+       const dedupedNew = result.results.filter(r => !existingIds.has(r.id))
+       const currentTotal = get().searchTotal
+       set({ searchResults: [...existing, ...dedupedNew], searchTotal: Math.max(currentTotal, result.total) })
        if (get().searchSourceFilter === "all") set({ sourceTotals: (result as any).source_totals || {} })
        useAppStore.setState({ assetsById: { ...appState.assetsById, ...searchById } })
      } else {
-      set({ searchResults: result.results, searchTotal: result.total })
+       set({ searchResults: result.results, searchTotal: result.total })
        if (get().searchSourceFilter === "all") set({ sourceTotals: (result as any).source_totals || {} })
        useAppStore.setState({ assetsById: { ...appState.assetsById, ...searchById } })
      }
-      set({ searchPage: page, searchHasMore: page * 200 < result.total })
+      const newTotal = get().searchTotal
+      set({ searchPage: page, searchHasMore: get().searchResults.length < newTotal })
     } catch (e: any) {
       console.error('Search failed:', e)
       set({ searchError: e?.message || i18n.t('store.searchRetry') })

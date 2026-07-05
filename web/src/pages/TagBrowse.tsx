@@ -50,6 +50,9 @@ export function TagBrowse() {
   const tags = useTagStore(s => s.tagEntries)
   const allTags = useTagStore(s => s.tagAllEntries)
   const [assets, setAssets] = useState<Asset[]>([])
+  const [totalAssets, setTotalAssets] = useState(0)
+  const [page, setPage] = useState(1)
+  const sentinelRef = useRef<HTMLDivElement>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,14 +87,15 @@ export function TagBrowse() {
     }
   }, [])
 
-  const loadAssetsByTags = useCallback(async (tagNames: string[]) => {
+  const loadAssetsByTags = useCallback(async (tagNames: string[], pageNum: number = 1) => {
     setLoading(true)
     try {
       const result = await api.smartSearch({
         tags: tagNames.join(','),
-        page_size: 100,
+        page_size: 200,
+        page: pageNum,
       })
-      setAssets(result.results.map((r) => ({
+      const mapped = result.results.map((r) => ({
         id: r.id,
         file_name: r.file_name,
         duration: r.duration,
@@ -118,8 +122,15 @@ export function TagBrowse() {
         created_at: '',
         updated_at: '',
         tags: [],
-      } as unknown as Asset)))
+      } as unknown as Asset))
+      if (pageNum === 1) {
+        setAssets(mapped)
+      } else {
+        setAssets(prev => [...prev, ...mapped])
+      }
+      setTotalAssets(result.total)
       setAssetCount(result.total)
+      setPage(pageNum)
       setView('assets')
     } catch (e) {
       console.error('Failed to search assets:', e)
@@ -127,6 +138,25 @@ export function TagBrowse() {
       setLoading(false)
     }
   }, [])
+
+  const loadMore = () => {
+    loadAssetsByTags(selectedTags, page + 1)
+  }
+
+  useEffect(() => {
+    if (!sentinelRef.current) return
+    const el = sentinelRef.current
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && assets.length < totalAssets && !loading && selectedTags.length > 0) {
+          loadMore()
+        }
+      },
+      { rootMargin: '300px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [assets.length, totalAssets, loading, selectedTags.length, page])
 
   const handleCategoryClick = (category: string) => {
     loadTagsByCategory(category)
@@ -138,7 +168,7 @@ export function TagBrowse() {
       : [...selectedTags, tagName]
     setSelectedTags(newTags)
     if (newTags.length > 0) {
-      loadAssetsByTags(newTags)
+      loadAssetsByTags(newTags, 1)
     }
   }
 
@@ -177,39 +207,7 @@ export function TagBrowse() {
       if (foundTag) {
         setSelectedCategory(foundTag.category)
          setSelectedTags([urlTag])
-         return api.smartSearch({ tags: urlTag, page_size: 100 }).then((result) => {
-           setAssets(result.results.map((r) => ({
-             id: r.id,
-             file_name: r.file_name,
-             duration: r.duration,
-             thumbnail_path: r.thumbnail_path,
-             library_id: '',
-             original_path: '',
-             file_size: 0,
-             mime_type: undefined,
-             width: undefined,
-             height: undefined,
-             fps: undefined,
-             codec: undefined,
-             audio_codec: undefined,
-             has_audio: false,
-             proxy_path: undefined,
-             transcript_status: '',
-             clip_status: '',
-             scene_status: '',
-             is_imported: false,
-             is_archived: false,
-             is_favorite: false,
-             notes: undefined,
-             file_hash: undefined,
-             created_at: '',
-             updated_at: '',
-             tags: [],
-           } as unknown as Asset)))
-           setAssetCount(result.total)
-           setView('assets')
-           setLoading(false)
-         })
+         loadAssetsByTags([urlTag], 1)
        } else {
          setLoading(false)
          setView('tags')
@@ -284,7 +282,7 @@ export function TagBrowse() {
               <span className="flex items-center gap-2">
                 <span>{selectedTags.join(', ')}</span>
                 <span className="text-sm font-normal text-gray-500">
-                  ({filteredAssets.length} / {assetCount} {t('assetGrid.videoCount', { count: assetCount })})
+                  ({filteredAssets.length} / {totalAssets} {t('assetGrid.videoCount', { count: totalAssets })})
                 </span>
               </span>
             )}
@@ -404,7 +402,7 @@ export function TagBrowse() {
 
       {!loading && view === 'assets' && (
         <>
-          <BatchToolbar currentAssets={filteredAssets} onRefresh={() => selectedTags.length > 0 ? loadAssetsByTags(selectedTags) : undefined} />
+          <BatchToolbar currentAssets={filteredAssets} onRefresh={() => selectedTags.length > 0 ? loadAssetsByTags(selectedTags, 1) : undefined} />
                     {/* Orientation filter */}
           <div className="flex items-center gap-1 mb-4">
             <button
@@ -474,6 +472,11 @@ export function TagBrowse() {
               {filteredAssets.map((asset) => (
                 <VideoCard key={asset.id} asset={asset} />
               ))}
+            </div>
+          )}
+          {assets.length < totalAssets && selectedTags.length > 0 && (
+            <div ref={sentinelRef} className="flex justify-center py-6">
+              <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
             </div>
           )}
         </>

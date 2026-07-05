@@ -156,7 +156,7 @@ async def smart_search(
     sort_by: str = Query("relevance"),
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=500),
    source_engine: str | None = Query(None),
     orientation: str = Query(""),
    session: AsyncSession = Depends(get_session),
@@ -215,7 +215,7 @@ async def smart_search(
     results_by_id: dict[str, dict] = {r["id"]: r for r in results}
 
     if q:
-        transcript_hits = await search_transcripts(session, q, limit=20)
+        transcript_hits = await search_transcripts(session, q, limit=page_size)
         for asset, text, start_time in transcript_hits:
             aid = str(asset.id)
             entry = results_by_id.get(aid)
@@ -257,12 +257,23 @@ async def smart_search(
             unmatched_video_ids: set[str] = set()
 
             # SceneTag (YOLO objects) — score 0.7
+            _tag_distinct = await asyncio.to_thread(
+                lambda: ai_session.query(Scene.video_id)
+                    .join(SceneTag, SceneTag.scene_id == Scene.id)
+                    .filter(SceneTag.label.contains(q))
+                    .distinct()
+                    .order_by(Scene.video_id)
+                    .offset((page - 1) * page_size * 2).limit(page_size * 2)
+                    .all()
+            )
+            _tag_video_ids = [row[0] for row in _tag_distinct]
             tag_hits = await asyncio.to_thread(
                 lambda: ai_session.query(SceneTag.label, SceneTag.confidence, Scene.video_id, Scene.start_time)
                     .join(Scene, Scene.id == SceneTag.scene_id)
-                    .filter(SceneTag.label.contains(q))
-                    .limit(50).all()
-            )
+                    .filter(Scene.video_id.in_(_tag_video_ids))
+                    .order_by(Scene.start_time)
+                    .all()
+            ) if _tag_video_ids else []
             for label, conf, video_id, start_time in tag_hits:
                 entry = results_by_id.get(video_id)
                 if entry is not None:
@@ -274,12 +285,23 @@ async def smart_search(
                     unmatched_video_ids.add(video_id)
 
             # SceneOCR (in-frame text) — score 0.6
+            _ocr_distinct = await asyncio.to_thread(
+                lambda: ai_session.query(Scene.video_id)
+                    .join(SceneOCR, SceneOCR.scene_id == Scene.id)
+                    .filter(SceneOCR.text.contains(q))
+                    .distinct()
+                    .order_by(Scene.video_id)
+                    .offset((page - 1) * page_size).limit(page_size)
+                    .all()
+            )
+            _ocr_video_ids = [row[0] for row in _ocr_distinct]
             ocr_hits = await asyncio.to_thread(
                 lambda: ai_session.query(SceneOCR.text, SceneOCR.confidence, Scene.video_id, Scene.start_time)
                     .join(Scene, Scene.id == SceneOCR.scene_id)
-                    .filter(SceneOCR.text.contains(q))
-                    .limit(50).all()
-            )
+                    .filter(Scene.video_id.in_(_ocr_video_ids))
+                    .order_by(Scene.start_time)
+                    .all()
+            ) if _ocr_video_ids else []
             ocr_unmatched: set[str] = set()
             for text, conf, video_id, start_time in ocr_hits:
                 entry = results_by_id.get(video_id)
@@ -359,7 +381,7 @@ async def smart_search(
 
         # Phase 3: CLIP visual search (via AI container) — score 0.8 * clip_score
         try:
-            clip_resp = httpx.post(f"{AI_SERVICE_URL}/clip/search", json={"query": q, "top_k": 20}, timeout=5)
+            clip_resp = httpx.post(f"{AI_SERVICE_URL}/clip/search", json={"query": q, "top_k": min(page_size, 100)}, timeout=5)
             if clip_resp.status_code == 200:
                 clip_results = clip_resp.json().get("results", [])
                 clip_unmatched: set[str] = set()
@@ -554,19 +576,44 @@ async def smart_search(
 
     # total: pure filter uses DB count, text search uses runtime list
     if q:
-        return_total = len(results)
+        return_total = max(total, len(results))
     else:
         return_total = total
     # ── Compute per-engine completed counts (filter-only mode) ──
     source_totals = {}
-    if q and results:
+    if q:
         try:
-            source_totals["scene"] = sum(1 for r in results if r.get("scene_status") == "completed")
-            source_totals["yolo"] = sum(1 for r in results if r.get("has_yolo_tags"))
-            source_totals["ocr"] = sum(1 for r in results if r.get("has_ocr_text"))
-            source_totals["clip"] = sum(1 for r in results if r.get("clip_status") == "completed")
-            source_totals["transcript"] = sum(1 for r in results if r.get("transcript_status") == "completed")
-            source_totals["diarization"] = sum(1 for r in results if r.get("diarization_status") == "completed")
+            from ..models.asset import Asset
+            if not include_archived:
+                asset_filter = sa_select(Asset.id)
+                asset_filter = asset_filter.where(Asset.is_archived == False)
+            else:
+                asset_filter = sa_select(Asset.id)
+            q_like = f"%{q}%"
+            asset_filter = asset_filter.where(
+                (Asset.file_name.ilike(q_like)) | (Asset.notes.ilike(q_like))
+            )
+            if library_id:
+                asset_filter = asset_filter.where(Asset.library_id == library_id)
+            if min_duration is not None:
+                asset_filter = asset_filter.where(Asset.duration >= min_duration)
+            if max_duration is not None:
+                asset_filter = asset_filter.where(Asset.duration <= max_duration)
+            if min_file_size is not None:
+                asset_filter = asset_filter.where(Asset.file_size >= min_file_size)
+            if max_file_size is not None:
+                asset_filter = asset_filter.where(Asset.file_size <= max_file_size)
+            if orientation == "landscape":
+                asset_filter = asset_filter.where(Asset.width > Asset.height)
+            elif orientation == "portrait":
+                asset_filter = asset_filter.where(Asset.width < Asset.height)
+
+            for ename in ['scene','yolo','ocr','clip','transcript','diarization']:
+                cnt = (await session.execute(
+                    sa_select(func.count(AIEngineJob.id))
+                    .where(AIEngineJob.engine_name == ename, AIEngineJob.status == 'completed', AIEngineJob.media_id.in_(asset_filter))
+                )).scalar() or 0
+                source_totals[ename] = cnt
         except Exception as e:
             logger.debug('Source totals error: %s', e)
     elif not q:

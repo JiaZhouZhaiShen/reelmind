@@ -14,6 +14,7 @@ import { LibraryManager } from './pages/LibraryManager'
 import { SearchPage } from './pages/SearchPage'
 import { TagManager } from './pages/TagManager'
 import { TagBrowse } from './pages/TagBrowse'
+import { YoloTagBrowse } from './pages/YoloTagBrowse'
 import { TimelineView } from './pages/TimelineView'
 import { DirectoryView } from './pages/DirectoryView'
 import { ProcessedAssets } from './pages/ProcessedAssets'
@@ -109,6 +110,7 @@ export default function App() {
           <Route path="/ai" element={<ErrorBoundary><AIEnginePage /></ErrorBoundary>} />
           <Route path="/processed" element={<ErrorBoundary><ProcessedAssets /></ErrorBoundary>} />
           <Route path="/tags/browse" element={<ErrorBoundary><TagBrowse /></ErrorBoundary>} />
+          <Route path="/yolo-tags/browse" element={<ErrorBoundary><YoloTagBrowse /></ErrorBoundary>} />
           <Route path="/tags/manage" element={<ErrorBoundary><TagManager /></ErrorBoundary>} />
          <Route path="/timeline" element={<ErrorBoundary><TimelineView /></ErrorBoundary>} />
          <Route path="/directory" element={<ErrorBoundary><DirectoryView /></ErrorBoundary>} />

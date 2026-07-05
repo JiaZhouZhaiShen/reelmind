@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Any
 from typing import Any, Optional
+import numpy as np
 from configs import scene as scene_cfg
 
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
@@ -51,10 +52,17 @@ def detect_scenes(video_path: str | Path) -> list[dict[str, Any]]:
 
     model = _load_transnet()
 
-    with torch.no_grad():
-        _, preds_sim, _ = model.predict_video(str(video_path), quiet=True)
+    try:
+        with torch.no_grad():
+            _, preds_sim, _ = model.predict_video(str(video_path), quiet=True)
+        video_fps = model.get_video_fps(str(video_path))
+    except Exception as e:
+        logger.warning("ffmpeg decode failed (%s: %s), falling back to OpenCV",
+                       type(e).__name__, e)
+        frames_np, video_fps = _extract_frames_opencv(video_path, model._input_size[:2])
+        with torch.no_grad():
+            _, preds_sim, _ = model.predict_frames(frames_np)
 
-    video_fps = model.get_video_fps(str(video_path))
     total_predictions = len(preds_sim)
     if total_predictions > 0:
         duration = total_predictions / video_fps
@@ -173,3 +181,39 @@ def extract_thumbnail(video_path: str | Path, time_sec: float, output_path: str 
         with open(output_path, 'wb') as f:
             f.write(jpeg_bytes)
     return jpeg_bytes
+
+def _extract_frames_opencv(
+    video_path: str | Path,
+    target_size: tuple[int, int],
+) -> tuple[np.ndarray, float]:
+    """Fallback: read & resize all frames via OpenCV when ffmpeg pipe fails.
+
+    Args:
+        video_path: Path to the video file.
+        target_size: (height, width) to resize each frame to.
+
+    Returns:
+        (frames_array, fps)  — stacked uint8 RGB frames and video FPS.
+    """
+    import cv2
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frames: list[np.ndarray] = []
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # OpenCV resize takes (width, height), so reverse target_size
+        resized = cv2.resize(rgb, (target_size[1], target_size[0]),
+                             interpolation=cv2.INTER_LINEAR)
+        frames.append(resized)
+    cap.release()
+
+    if not frames:
+        raise RuntimeError(f"No frames extracted from: {video_path}")
+
+    return np.stack(frames, axis=0).astype(np.uint8), fps
