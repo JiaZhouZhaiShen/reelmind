@@ -5,6 +5,9 @@ import { useStore as useAppStore } from './app'
 import { useLibraryStore } from './library'
 import i18n from '../i18n/config'
 
+import { logger } from '../utils/logger';
+
+
 interface AssetState {
   assets: Asset[]
   archivedAssets: Asset[]
@@ -55,7 +58,7 @@ export const useAssetStore = create<AssetState>((set, get) => ({
       const res = await api.getProcessedAssets()
       set({ processedAssets: res.items, processedAssetsTotal: res.total })
     } catch (e) {
-      console.error('Failed to load processed assets:', e)
+      logger.error('Failed to load processed assets:', e)
       useAppStore.setState({ error: i18n.t('store.loadFailed') + ': ' + ((e as any).message || e) })
     } finally {
       set({ processedAssetsLoading: false })
@@ -74,7 +77,7 @@ export const useAssetStore = create<AssetState>((set, get) => ({
       useAppStore.setState({ assetsById: byId })
       set({ assets: result.items, totalCount: result.total, currentPage: p })
     } catch (e) {
-      console.error('Failed to load assets:', e)
+      logger.error('Failed to load assets:', e)
       useAppStore.setState({ error: i18n.t('store.loadFailed') + ': ' + ((e as any).message || e) })
     } finally {
       set({ loadingAssets: false })
@@ -92,7 +95,7 @@ export const useAssetStore = create<AssetState>((set, get) => ({
       useAppStore.setState({ assetsById: { ...appState.assetsById, ...byId } })
       set({ archivedAssets: result.items })
     } catch (e) {
-      console.error('Failed to load archived assets:', e)
+      logger.error('Failed to load archived assets:', e)
       useAppStore.setState({ error: i18n.t('store.loadFailed') + ': ' + ((e as any).message || e) })
     } finally {
       set({ loadingAssets: false })
@@ -122,7 +125,7 @@ export const useAssetStore = create<AssetState>((set, get) => ({
       const asset = await api.getAsset(id)
       set({ currentAsset: asset })
     } catch (e) {
-      console.error('Failed to load asset:', e)
+      logger.error('Failed to load asset:', e)
       useAppStore.setState({ error: i18n.t('store.loadFailed') + ': ' + ((e as any).message || e) })
     }
   },

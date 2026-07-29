@@ -6,6 +6,9 @@ import { VideoCard } from '../components/VideoCard'
 import { BatchToolbar } from '../components/BatchToolbar'
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection'
 
+import { logger } from '../utils/logger';
+
+
 // ── Semantic YOLO category classification ──
 const CATEGORY_DEFS: Array<{ id: string; label: string; color: string; labels: string[] }> = [
   { id: 'people',     label: '\u4eba\u7269',     color: '#ec4899', labels: ['person'] },
@@ -76,7 +79,7 @@ export function YoloTagBrowse() {
       setLabels(data.labels)
       setTotal(data.total)
     } catch (e) {
-      console.error('Failed to load YOLO labels:', e)
+      logger.error('Failed to load YOLO labels:', e)
     } finally {
       setLoading(false)
     }
@@ -99,7 +102,7 @@ export function YoloTagBrowse() {
       setPage(pageNum)
       setView('assets')
     } catch (e) {
-      console.error('Failed to load videos for label:', e)
+      logger.error('Failed to load videos for label:', e)
     } finally {
       setLoading(false)
     }

@@ -82,6 +82,7 @@ services:
     restart: always
     ports: []
     environment:
+      JWT_SECRET: ${JWT_SECRET?err}   # ⚠ 必须设置，用 python -c "import secrets; print(secrets.token_urlsafe(32))" 生成
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-reelmind}

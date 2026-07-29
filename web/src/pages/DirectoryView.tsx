@@ -10,6 +10,9 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection'
 import { useTranslation } from 'react-i18next'
 
+import { logger } from '../utils/logger';
+
+
 // ═══════════════════════════════════════════════════════════════════════
 // Performance config — all tunable
 // ═══════════════════════════════════════════════════════════════════════
@@ -178,7 +181,7 @@ export function DirectoryView() {
         ])
         setDirSubdirs(dirData)
      } catch (e) {
-       console.error('Failed to load path:', e)
+       logger.error('Failed to load path:', e)
         setError(t('directoryView.folderLoadFailed') + ': ' + ((e as any).message || e))
      }
     },

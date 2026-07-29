@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { api } from '../api/client'
 
+import { logger } from '../utils/logger';
+
+
 interface TagEntry {
   id: string
   name: string
@@ -29,7 +32,7 @@ export const useTagStore = create<TagState>((set) => ({
       set({ tagCategories: data })
       return data
     } catch (e) {
-      console.error('Failed to load tag categories:', e)
+      logger.error('Failed to load tag categories:', e)
       throw e
     }
   },
@@ -42,7 +45,7 @@ export const useTagStore = create<TagState>((set) => ({
       ])
       set({ tagAllEntries: allTags, tagCategories: categories })
     } catch (e) {
-      console.error('Failed to load all tags:', e)
+      logger.error('Failed to load all tags:', e)
       throw e
     }
   },
@@ -52,7 +55,7 @@ export const useTagStore = create<TagState>((set) => ({
       const data = await api.listTags(category)
       set({ tagEntries: data })
     } catch (e) {
-      console.error('Failed to load tags:', e)
+      logger.error('Failed to load tags:', e)
       throw e
     }
   },

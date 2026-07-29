@@ -14,6 +14,9 @@ import { VideoPlayer } from '../components/VideoPlayer'
 import { useTranslation } from 'react-i18next'
 import { MetadataPanel } from '../components/MetadataPanel'
 
+import { logger } from '../utils/logger';
+
+
 function getResolutionLabel(w?: number, h?: number, t?: (key: string) => string): string {
   if (!w || !h) return ''
   const max = Math.max(w, h)
@@ -166,11 +169,11 @@ export function AssetDetailV2() {
     setLoading(true)
     Promise.all([
       loadAsset(id),
-      aiApi.getAIScenes(id).then((r: any) => { if (r.results?.length) setAiScenes(r.results) }).catch((e: any) => console.error("load AI scenes failed:", e)),
-      aiApi.getAISubtitles(id).then((r: any) => { if (r.results?.length) setAiTranscript(r.results) }).catch((e: any) => console.error("load AI subs failed:", e)),
-      aiApi.getAISpeakers(id).then((r: any) => { if (r.speakers?.length) setSpeakers(r.speakers) }).catch((e: any) => console.error("load AI speakers failed:", e)),
-      aiApi.getAITags(id).then((r: any) => { if (r.tags?.length) setSceneTags(r.tags) }).catch((e: any) => console.error("load AI tags failed:", e)),
-      aiApi.getEngineJobStatus(id).then((r: any) => { if (r.jobs) setEngineJobs(r.jobs) }).catch((e: any) => console.error("load engine jobs failed:", e)),
+      aiApi.getAIScenes(id).then((r: any) => { if (r.results?.length) setAiScenes(r.results) }).catch((e: any) => logger.error("load AI scenes failed:", e)),
+      aiApi.getAISubtitles(id).then((r: any) => { if (r.results?.length) setAiTranscript(r.results) }).catch((e: any) => logger.error("load AI subs failed:", e)),
+      aiApi.getAISpeakers(id).then((r: any) => { if (r.speakers?.length) setSpeakers(r.speakers) }).catch((e: any) => logger.error("load AI speakers failed:", e)),
+      aiApi.getAITags(id).then((r: any) => { if (r.tags?.length) setSceneTags(r.tags) }).catch((e: any) => logger.error("load AI tags failed:", e)),
+      aiApi.getEngineJobStatus(id).then((r: any) => { if (r.jobs) setEngineJobs(r.jobs) }).catch((e: any) => logger.error("load engine jobs failed:", e)),
     ]).finally(() => setLoading(false))
   }, [id])
 

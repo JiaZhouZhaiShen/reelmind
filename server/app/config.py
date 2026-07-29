@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     DB_DRIVER: str = "postgresql+asyncpg"
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
-    DB_USER: str = "reelmind"
-    DB_PASSWORD: str = "reelmind"
+    DB_USER: str = ""
+    DB_PASSWORD: str = ""
     DB_NAME: str = "reelmind"
     DB_POOL_SIZE: int = 10
     DB_POOL_OVERFLOW: int = 5
@@ -130,7 +130,7 @@ class Settings(BaseSettings):
     # --- Frontend ---
     FRONTEND_DIST: str = "../web/dist"
     # --- Authentication ---
-    JWT_SECRET: str = "reelmind-dev-secret-change-me-in-production"
+    JWT_SECRET: str = ""  # MUST be set via environment variable; no default for security
 
 
 settings = Settings()

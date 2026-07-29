@@ -28,7 +28,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 
@@ -55,6 +55,8 @@ app = FastAPI(title="ReelMind AI Service", version="0.1.0")
 _tasks: dict[str, dict] = {}
 
 _task_cancel_events: dict[str, threading.Event] = {}
+
+_active_threads: dict[str, threading.Thread] = {}
 
 _task_lock = threading.Lock()
 
@@ -198,13 +200,25 @@ def _unload_model_instance(model_name: str) -> bool:
 
 # ── Request models ───────────────────────────────────────────────────────────
 
+VALID_ENGINES = frozenset({'scene', 'yolo', 'ocr', 'clip', 'transcript', 'diarization'})
+
 class StartRequest(BaseModel):
 
-    limit: int = 10
-    video_ids: list[str] | None = None
-    engines: list[str] | None = None
+    limit: int = Field(default=10, ge=0, le=10000)
+    video_ids: list[str] | None = Field(default=None, max_length=10000)
+    engines: list[str] | None = Field(default=None, max_length=6)
     task_label: str = "manual"
     filters: dict | None = None
+
+    @field_validator('engines')
+    @classmethod
+    def validate_engines(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        invalid = set(v) - VALID_ENGINES
+        if invalid:
+            raise ValueError(f"Unknown engines: {invalid}. Valid engines: {VALID_ENGINES}")
+        return v
 
 
 
@@ -267,9 +281,8 @@ def _run_pipeline_task(task_id: str, limit: int, video_ids: list[str] | None,
 
                             t["video"] = vname
 
-                    except Exception:
-
-                        pass
+                    except Exception as e:
+                        logger.warning("Failed to parse video name from progress: %s", e)
 
 
 
@@ -300,24 +313,24 @@ def _run_pipeline_task(task_id: str, limit: int, video_ids: list[str] | None,
             from models.db import Asset
 
             pg = get_pg_session()
+            try:
+                assets = []
 
-            assets = []
+                for vid in video_ids:
 
-            for vid in video_ids:
+                    try:
 
-                try:
+                        asset = pg.query(Asset).filter(Asset.id == _uuid.UUID(vid)).first()
 
-                    asset = pg.query(Asset).filter(Asset.id == _uuid.UUID(vid)).first()
+                        if asset and os.path.isfile(str(asset.original_path)):
 
-                    if asset and os.path.isfile(str(asset.original_path)):
+                            assets.append(asset)
 
-                        assets.append(asset)
+                    except Exception:
 
-                except:
-
-                    pass
-
-            pg.close()
+                        pass
+            finally:
+                pg.close()
 
             # Single video: use AIPipeline for proper per-engine status tracking
             if len(video_ids) == 1 and task_label == "single" and assets:
@@ -383,6 +396,7 @@ def _run_pipeline_task(task_id: str, limit: int, video_ids: list[str] | None,
             }
 
             _task_cancel_events.pop(task_id, None)
+            _active_threads.pop(task_id, None)
 
 
 
@@ -395,6 +409,7 @@ def _run_pipeline_task(task_id: str, limit: int, video_ids: list[str] | None,
             _tasks[task_id] = {"status": "error", "error": str(e)}
 
         _task_cancel_events.pop(task_id, None)
+        _active_threads.pop(task_id, None)
 
 
 
@@ -438,8 +453,8 @@ async def health():
             free_bytes, total_bytes = torch.cuda.mem_get_info()
             total_gb = round(total_bytes / 1073741824, 2)
             total_used_gb = round((total_bytes - free_bytes) / 1073741824, 2)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("GPU health check failed: %s", e)
     return {
         "status": "ok",
         "gpu": gpu,
@@ -458,9 +473,11 @@ async def start_pipeline(req: StartRequest):
 
         target=_run_pipeline_task, args=(task_id, req.limit, req.video_ids, req.engines, req.task_label, req.filters),
 
-        daemon=True
+        daemon=False
 
     )
+
+    _active_threads[task_id] = thread
 
     thread.start()
 
@@ -500,6 +517,12 @@ async def cancel_task(task_id: str):
 
                 count += 1
 
+        for t in list(_active_threads.values()):
+
+            t.join(timeout=5)
+
+        _active_threads.clear()
+
         return {"cancelled": count}
 
     with _task_lock:
@@ -509,6 +532,12 @@ async def cancel_task(task_id: str):
     if event:
 
         event.set()
+
+        t = _active_threads.pop(task_id, None)
+
+        if t:
+
+            t.join(timeout=5)
 
         return {"status": "cancelling"}
 
@@ -557,20 +586,6 @@ async def load_model(model_name: str):
         raise HTTPException(status_code=404, detail=f"Unknown model: {model_name}")
 
     success = _load_model_instance(model_name)
-
-
-    # Delete PG engine jobs so pipeline does not skip re-processing
-    try:
-        from models.db import get_pg_session
-        from sqlalchemy import text
-        pg = get_pg_session()
-        pg.execute(text("UPDATE ai_engine_jobs SET status = :s, error_message = NULL, retry_count = 0, started_at = NULL, completed_at = NULL WHERE media_id = :mid"), {"s": "pending", "mid": video_id})
-        pg.commit()
-        pg.close()
-        logger.info("Reset PG engine jobs to pending for video %s", video_id)
-    except Exception as e:
-        logger.warning("Failed to delete PG engine jobs for %s: %s", video_id, e)
-    
 
     return {"status": "ok" if success else "error", "model": model_name, "loaded": success}
 

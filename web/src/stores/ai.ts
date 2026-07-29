@@ -3,6 +3,10 @@ import * as aiApi from '../api/ai'
 import type { QueueStatus, PendingCounts, PipelineProgress, GPUInfo } from '../types/ai'
 import type { PipelineState } from '../types/ai'
 import i18n from '../i18n/config'
+
+import { logger } from '../utils/logger';
+
+
 function defaultQueueStatus(): QueueStatus {
   return { status: "idle", total: 0, completed: 0, failed: 0, skipped: 0,
     overall_progress: 0, current_video: null, current_stage: '', current_progress: 0,
@@ -85,7 +89,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
         set({ moduleConfigLoading: false })
       }
     } catch (err) {
-      console.error("fetchModuleConfig failed:", err)
+      logger.error("fetchModuleConfig failed:", err)
       set({ error: "\u83b7\u53d6\u6a21\u5757\u914d\u7f6e\u5931\u8d25: " + (err as Error).message, moduleConfigLoading: false })
     }
   },
@@ -97,7 +101,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       set({ moduleConfig: config, moduleConfigSaving: false })
       return true
     } catch (err) {
-      console.error("saveModuleConfig failed:", err)
+      logger.error("saveModuleConfig failed:", err)
       set({ error: "\u4fdd\u5b58\u6a21\u5757\u914d\u7f6e\u5931\u8d25: " + (err as Error).message, moduleConfigSaving: false })
       return false
     }
@@ -109,28 +113,28 @@ export const useAIStore = create<AIStore>((set, get) => ({
     try {
       await aiApi.setHFToken(get().hfToken)
       set({ hfTokenSet: true })
-    } catch (err) { console.error('saveHfToken failed:', err); set({ error: 'Failed to save HF token: ' + (err as Error).message }) }
+    } catch (err) { logger.error('saveHfToken failed:', err); set({ error: 'Failed to save HF token: ' + (err as Error).message }) }
   },
 
   loadHfTokenStatus: async () => {
     try {
       const data = await aiApi.getHFTokenStatus()
       set({ hfTokenSet: data.set })
-    } catch (err) { console.error('loadHfTokenStatus failed:', err); set({ error: 'Failed to load HF token status: ' + (err as Error).message }) }
+    } catch (err) { logger.error('loadHfTokenStatus failed:', err); set({ error: 'Failed to load HF token status: ' + (err as Error).message }) }
   },
 
   fetchModelAndGpu: async () => {
     try {
       const data = await aiApi.getAIModelStatus()
       const gpu = data.gpu as any; const mappedGpu: GPUInfo = { used: gpu.used ?? 0, total: gpu.total ?? 0, percent: gpu.percent ?? 0 }; set({ modelStatus: data.models, gpuInfo: mappedGpu, gpuInfoLoading: false, modelStatusLoading: false })
-    } catch (err) { console.error('fetchModelAndGpu failed:', err); set({ error: i18n.t('store.loadFailed') + ': ' + (err as Error).message, gpuInfoLoading: false, modelStatusLoading: false }) }
+    } catch (err) { logger.error('fetchModelAndGpu failed:', err); set({ error: i18n.t('store.loadFailed') + ': ' + (err as Error).message, gpuInfoLoading: false, modelStatusLoading: false }) }
   },
 
   fetchPendingCount: async () => {
     try {
       const data: any = await aiApi.getPendingAssetCount()
       set({ pendingCounts: data, pendingLoading: false })
-    } catch (err) { console.error('fetchPendingCount failed:', err); set({ error: 'Failed to fetch pending counts: ' + (err as Error).message, pendingLoading: false }) }
+    } catch (err) { logger.error('fetchPendingCount failed:', err); set({ error: 'Failed to fetch pending counts: ' + (err as Error).message, pendingLoading: false }) }
   },
 
 
@@ -161,7 +165,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
         }
         return { queueStatus: { ...s.queueStatus, ...update } }
       })
-    } catch (err) { console.error('fetchScanStatus failed:', err); set({ error: 'Failed to fetch scan status: ' + (err as Error).message }) }
+    } catch (err) { logger.error('fetchScanStatus failed:', err); set({ error: 'Failed to fetch scan status: ' + (err as Error).message }) }
   },
 
 
@@ -184,7 +188,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
     try {
       if (action === 'load') await aiApi.loadAIModel(model); else await aiApi.unloadAIModel(model)
       await get().fetchModelAndGpu()
-    } catch (err) { console.error('handleModelAction failed:', err); set({ error: 'Model action failed: ' + (err as Error).message }) }
+    } catch (err) { logger.error('handleModelAction failed:', err); set({ error: 'Model action failed: ' + (err as Error).message }) }
     finally { get().setDownloading(model, false) }
   },
 
@@ -199,7 +203,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
           may not have updated _scan_state yet, causing a flash back to "idle". */
      }
      get().fetchPendingCount()
-   } catch (err) { console.error('handleRunBatchPipeline failed:', err); set({ error: 'Batch pipeline failed: ' + (err as Error).message }) }
+   } catch (err) { logger.error('handleRunBatchPipeline failed:', err); set({ error: 'Batch pipeline failed: ' + (err as Error).message }) }
    finally { set({ batchStarting: false }) }
  },
 
@@ -207,7 +211,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
     try {
       const res: any = await aiApi.scanLibraryAI()
       set({ queueStatus: { ...defaultQueueStatus(), status: 'running', message: res.message || 'Scanning...' } })
-    } catch (err) { console.error('handleScanLibrary failed:', err); set({ error: 'Scan library failed: ' + (err as Error).message }) }
+    } catch (err) { logger.error('handleScanLibrary failed:', err); set({ error: 'Scan library failed: ' + (err as Error).message }) }
   },
 
 

@@ -4,6 +4,9 @@ import { api } from '../api/client'
 import { useStore as useAppStore } from './app'
 import i18n from '../i18n/config'
 
+import { logger } from '../utils/logger';
+
+
 interface LibraryState {
   libraries: Library[]
   selectedLibraryId: string | null
@@ -23,7 +26,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
       const libraries = await api.listLibraries()
       set({ libraries })
     } catch (e) {
-      console.error('Failed to load libraries:', e)
+      logger.error('Failed to load libraries:', e)
       useAppStore.setState({ error: i18n.t('store.loadFailed') + ': ' + ((e as any).message || e) })
     }
   },
@@ -34,7 +37,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
       const stats = await api.stats()
       set({ stats })
     } catch (e) {
-      console.error('Failed to load stats:', e)
+      logger.error('Failed to load stats:', e)
       useAppStore.setState({ error: i18n.t('store.loadFailed') + ': ' + ((e as any).message || e) })
     }
   },

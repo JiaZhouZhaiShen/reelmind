@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { api } from '../api/client'
 
+import { logger } from '../utils/logger';
+
+
 interface DirTreeNode {
   name: string
   depth: number
@@ -26,7 +29,7 @@ export const useDirectoryStore = create<DirectoryState>((set) => ({
       const data = await api.directoryTree(libraryId)
       set({ dirTree: data as DirTreeNode[] })
     } catch (e) {
-      console.error('Failed to load directory tree:', e)
+      logger.error('Failed to load directory tree:', e)
       throw e
     } finally {
       set({ dirTreeLoading: false })

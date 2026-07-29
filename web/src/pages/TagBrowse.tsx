@@ -10,6 +10,9 @@ import { BatchToolbar } from '../components/BatchToolbar'
 import { useTranslation } from 'react-i18next'
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection'
 
+import { logger } from '../utils/logger';
+
+
 const CATEGORY_COLORS: Record<string, string> = {
   resolution: '#8b5cf6',
   codec: '#06b6d4',
@@ -68,7 +71,7 @@ export function TagBrowse() {
       await useTagStore.getState().loadTagAllEntries()
       setView('tags')
     } catch (e) {
-      console.error('Failed to load tags:', e)
+      logger.error('Failed to load tags:', e)
     } finally {
       setLoading(false)
     }
@@ -81,7 +84,7 @@ export function TagBrowse() {
       await useTagStore.getState().loadTagEntries(category)
       setView('categoryTags')
     } catch (e) {
-      console.error('Failed to load tags:', e)
+      logger.error('Failed to load tags:', e)
     } finally {
       setLoading(false)
     }
@@ -133,7 +136,7 @@ export function TagBrowse() {
       setPage(pageNum)
       setView('assets')
     } catch (e) {
-      console.error('Failed to search assets:', e)
+      logger.error('Failed to search assets:', e)
     } finally {
       setLoading(false)
     }

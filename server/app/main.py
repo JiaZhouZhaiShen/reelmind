@@ -32,7 +32,14 @@ async def lifespan(app: FastAPI):
 
     ensure_dirs()
     await init_db()
-    _logger.info("Database initialised - %s", settings.DATABASE_URL.replace(settings.DB_PASSWORD, "****"))
+    _logger.info("Database initialised - %s", settings.DATABASE_URL.replace(settings.DB_PASSWORD, "****") if settings.DB_PASSWORD else settings.DATABASE_URL)
+
+    # Validate security-critical settings
+    if not settings.DB_PASSWORD:
+        _logger.critical("DB_PASSWORD is not set — database connection will fail")
+    if not settings.JWT_SECRET:
+        _logger.critical("JWT_SECRET is not set — authentication is insecure. Set a strong random secret via JWT_SECRET env var.")
+        raise RuntimeError("JWT_SECRET must be configured. Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
 
     # Load system settings into in-memory cache
     from .core import settings_cache as _settings_cache
@@ -50,6 +57,7 @@ async def lifespan(app: FastAPI):
             BatchCheckpoint.status == "running"
         ).all()
         stale_count = 0
+        job_reset_count = 0
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
         for cp in running_cps:
             if cp.created_at and cp.created_at < cutoff and cp.processed < cp.total_videos:

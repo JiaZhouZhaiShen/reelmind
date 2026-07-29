@@ -11,6 +11,9 @@ import { useAssetStore } from '../stores/asset'
 import { useTranslation } from 'react-i18next'
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection'
 
+import { logger } from '../utils/logger';
+
+
 interface DayInfo {
   month: number
   day: number
@@ -52,7 +55,7 @@ export function TimelineView() {
         const data = await api.timelineYears(selectedLibraryId || undefined)
         useGridStore.setState({ gridTimelineYears: data })
      } catch (e) {
-       console.error('Failed to load timeline years:', e)
+       logger.error('Failed to load timeline years:', e)
         useStore.setState({ error: t('timelineView.yearLoadFailed') + ': ' + ((e as any).message || e) })
      } finally {
         setLoadingFlags(f => ({ ...f, loadYears: false }))
@@ -73,7 +76,7 @@ export function TimelineView() {
           const data = await api.timelineDaysByYear(year, selectedLibraryId || undefined)
           setYearDays(prev => ({ ...prev, [year]: data }))
        } catch (e) {
-         console.error('Failed to load days:', e)
+         logger.error('Failed to load days:', e)
           useStore.setState({ error: t('timelineView.dayLoadFailed') + ': ' + ((e as any).message || e) })
        } finally {
           setLoadingFlags(f => ({ ...f, [flagKey]: false }))
@@ -95,7 +98,7 @@ export function TimelineView() {
       useStore.setState((s) => ({ assetsById: { ...s.assetsById, ...byId } }))
      setDayAssets(prev => ({ ...prev, [key]: data }))
    } catch (e) {
-     console.error('Failed to load assets:', e)
+     logger.error('Failed to load assets:', e)
       useStore.setState({ error: t('timelineView.assetLoadFailed') + ': ' + ((e as any).message || e) })
    } finally {
       setLoadingFlags(f => ({ ...f, [flagKey]: false }))
@@ -162,7 +165,7 @@ export function TimelineView() {
           return next
         })
      } catch (e) {
-       console.error('Failed to refresh days:', e)
+       logger.error('Failed to refresh days:', e)
         useStore.setState({ error: t('timelineView.refreshFailed') + ': ' + ((e as any).message || e) })
      }
     }

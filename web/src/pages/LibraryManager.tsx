@@ -8,6 +8,9 @@ import type { Library as LibraryType } from '../api/client'
 import { useTranslation } from 'react-i18next'
 import { LibraryCard } from '../components/library/LibraryCard'
 import { LibraryEditDialog } from '../components/library/LibraryEditDialog'
+
+import { logger } from '../utils/logger';
+
  
 export function LibraryManager() {
   const { t } = useTranslation()
@@ -43,7 +46,7 @@ export function LibraryManager() {
       await loadLibraries()
       await loadStats()
     } catch (e) {
-      console.error('Failed to create library:', e)
+      logger.error('Failed to create library:', e)
     } finally {
       setLoading(false)
     }
@@ -55,7 +58,7 @@ export function LibraryManager() {
         const status = await api.getLibraryScanStatus(libId)
         setLibraryScanStatus(libId, status)
       } catch (e) {
-        console.error("Scan poll failed:", e)
+        logger.error("Scan poll failed:", e)
       }
     }
     poll()
@@ -82,7 +85,7 @@ export function LibraryManager() {
       libraries.forEach((lib) => {
         api.getLibraryScanStatus(lib.id).then((status) => {
           setLibraryScanStatus(lib.id, status)
-        }).catch((e) => console.error("Initial scan check failed:", e))
+        }).catch((e) => logger.error("Initial scan check failed:", e))
       })
       return
     }
@@ -101,12 +104,12 @@ export function LibraryManager() {
                 const s = await api.getLibraryScanStatus(lib.id)
                 setLibraryScanStatus(lib.id, s)
               } catch (e) {
-                console.error("Scan poll failed:", e)
+                logger.error("Scan poll failed:", e)
               }
             }, 3000)
           }
         } catch (e) {
-          console.error("Library init failed:", e)
+          logger.error("Library init failed:", e)
         }
       }
     }
@@ -121,7 +124,7 @@ export function LibraryManager() {
       await loadLibraries()
       await loadStats()
     } catch (e) {
-      console.error('Scan failed:', e)
+      logger.error('Scan failed:', e)
     } finally {
       setScanning(null)
     }
@@ -136,7 +139,7 @@ export function LibraryManager() {
       await loadLibraries()
       await loadStats()
     } catch (e) {
-      console.error('Pause scan failed:', e)
+      logger.error('Pause scan failed:', e)
     } finally {
       setPausing(null)
     }
@@ -150,7 +153,7 @@ export function LibraryManager() {
       await loadLibraries()
       await loadStats()
     } catch (e) {
-      console.error('Resume scan failed:', e)
+      logger.error('Resume scan failed:', e)
     } finally {
       setPausing(null)
     }
@@ -163,7 +166,7 @@ export function LibraryManager() {
       const result = await api.repairThumbnails()
       alert(t('libraryManager.repairSuccess', { repaired: result.repaired, failed: result.failed }))
     } catch (e) {
-      console.error('Repair thumbnails failed:', e)
+      logger.error('Repair thumbnails failed:', e)
       alert(t('libraryManager.repairFailed'))
     } finally {
       setRepairing(false)
@@ -178,7 +181,7 @@ export function LibraryManager() {
       })
       setTimeout(() => setAutoScanSaving(false), 1500)
     } catch (e) {
-      console.error("Failed to save auto-scan settings:", e)
+      logger.error("Failed to save auto-scan settings:", e)
       setAutoScanSaving(false)
     }
   }
@@ -202,7 +205,7 @@ export function LibraryManager() {
       await loadStats()
       handleEditClose()
     } catch (e) {
-      console.error('Failed to update library:', e)
+      logger.error('Failed to update library:', e)
     } finally {
       setSaving(false)
     }
@@ -214,7 +217,7 @@ export function LibraryManager() {
       const updated = await api.getLibrary(libId)
       setEditingLib(updated)
     } catch (e) {
-      console.error('Failed to add path:', e)
+      logger.error('Failed to add path:', e)
     }
   }
  
@@ -224,7 +227,7 @@ export function LibraryManager() {
       const updated = await api.getLibrary(libId)
       setEditingLib(updated)
     } catch (e) {
-      console.error('Failed to remove path:', e)
+      logger.error('Failed to remove path:', e)
     }
   }
  
@@ -235,7 +238,7 @@ export function LibraryManager() {
       await loadLibraries()
       await loadStats()
     } catch (e) {
-      console.error('Delete failed:', e)
+      logger.error('Delete failed:', e)
     }
   }
  

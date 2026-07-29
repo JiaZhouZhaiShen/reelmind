@@ -4,6 +4,9 @@ import { api } from "../../api/client"
 import type { AdminUser } from "../../api/client"
 import { Users, Plus, Shield, User, Trash2, Loader2, X } from "lucide-react"
 
+import { logger } from '../../utils/logger';
+
+
 export default function UserManagementPage() {
   const { t } = useTranslation()
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -21,7 +24,7 @@ export default function UserManagementPage() {
       const data = await api.listAdminUsers()
       setUsers(data)
     } catch (e) {
-      console.error("Failed to load users:", e)
+      logger.error("Failed to load users:", e)
     } finally {
       setLoading(false)
     }
@@ -52,7 +55,7 @@ export default function UserManagementPage() {
       await api.deleteAdminUser(userId)
       await loadUsers()
     } catch (e) {
-      console.error("Failed to delete user:", e)
+      logger.error("Failed to delete user:", e)
     }
   }
 
@@ -61,7 +64,7 @@ export default function UserManagementPage() {
       await api.updateAdminUser(userId, { role })
       await loadUsers()
     } catch (e) {
-      console.error("Failed to update user:", e)
+      logger.error("Failed to update user:", e)
     }
   }
 

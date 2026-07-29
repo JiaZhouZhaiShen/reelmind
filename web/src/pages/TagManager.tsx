@@ -4,6 +4,9 @@ import { Tag, Plus, Trash2, Edit2, Wand2, Search, Loader2, X, CheckCircle, Exter
 import { api, type TagInfo } from '../api/client'
 import { useTranslation } from 'react-i18next'
 
+import { logger } from '../utils/logger';
+
+
 const CATEGORY_COLORS: Record<string, string> = {
   resolution: '#8b5cf6',
   codec: '#06b6d4',
@@ -52,7 +55,7 @@ export function TagManager() {
       setTags(tagData)
       setAutoTagIds(new Set(autoData.auto_tag_ids))
     } catch (e) {
-      console.error('Failed to load tags:', e)
+      logger.error('Failed to load tags:', e)
     } finally {
       setLoading(false)
     }
@@ -74,7 +77,7 @@ export function TagManager() {
       setShowCreate(false)
       await loadData()
     } catch (e) {
-      console.error('Failed to create tag:', e)
+      logger.error('Failed to create tag:', e)
     }
   }
 
@@ -86,7 +89,7 @@ export function TagManager() {
       resetForm()
       await loadData()
     } catch (e) {
-      console.error('Failed to update tag:', e)
+      logger.error('Failed to update tag:', e)
     }
   }
 
@@ -100,7 +103,7 @@ export function TagManager() {
       await api.deleteTag(tag.id)
       await loadData()
     } catch (e) {
-      console.error('Failed to delete tag:', e)
+      logger.error('Failed to delete tag:', e)
     }
   }
 
@@ -116,7 +119,7 @@ export function TagManager() {
       await loadData()
       setTimeout(() => setBatchDeleteResult(null), 3000)
     } catch (e) {
-      console.error('Batch delete failed:', e)
+      logger.error('Batch delete failed:', e)
     } finally {
       setBatchDeleting(false)
     }
@@ -130,7 +133,7 @@ export function TagManager() {
       setAutoGenResult(t('tags.autoGenerateStarted'))
       setTimeout(() => { loadData(); setAutoGenResult(null) }, 4000)
     } catch (e) {
-      console.error('Auto-generate failed:', e)
+      logger.error('Auto-generate failed:', e)
     } finally {
       setAutoGenerating(false)
     }

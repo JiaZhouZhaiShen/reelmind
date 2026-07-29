@@ -372,19 +372,21 @@ def _enrich_ai_flags(items: list[AssetRead]) -> None:
         return
     try:
         from app.models.ai import get_ai_session
-        from sqlalchemy import text as _sa_text
+        from sqlalchemy import bindparam, text as _sa_text
         ids = [str(item.id) for item in items]
+        if not ids:
+            return
         _ai = get_ai_session()
         try:
             yolo_rows = _ai.execute(_sa_text(
                 "SELECT DISTINCT s.video_id FROM scenes s JOIN scene_tags st ON st.scene_id = s.id "
-                "WHERE s.video_id IN ({0})".format(",".join('"' + x + '"' for x in ids))
-            )).fetchall()
+                "WHERE s.video_id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True, value=ids))).fetchall()
             yolo_ids = set(r[0] for r in yolo_rows if r[0])
             ocr_rows = _ai.execute(_sa_text(
                 "SELECT DISTINCT s.video_id FROM scenes s JOIN scene_ocr so ON so.scene_id = s.id "
-                "WHERE s.video_id IN ({0})".format(",".join('"' + x + '"' for x in ids))
-            )).fetchall()
+                "WHERE s.video_id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True, value=ids))).fetchall()
             ocr_ids = set(r[0] for r in ocr_rows if r[0])
             for item in items:
                 sid = str(item.id)

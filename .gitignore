@@ -159,3 +159,9 @@ backups/
 archive/
 # Windows reserved name artifact
 server/NUL
+
+# CodeBuddy AI assistant data
+.codebuddy/
+
+# Playwright CLI session data
+.playwright-cli/

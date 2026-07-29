@@ -6,6 +6,9 @@ import { useStore as useAppStore } from './app'
 import { useLibraryStore } from './library'
 import i18n from '../i18n/config'
 
+import { logger } from '../utils/logger';
+
+
 const SEARCH_SAVE_KEY = 'reelmind_search_state'
 
 function getInitialSearchState() {
@@ -108,7 +111,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       set({ searchResults: result.results, searchTotal: result.total })
       set({ sourceTotals: (result as any).source_totals || {} })
     } catch (e) {
-      console.error('Search failed:', e)
+      logger.error('Search failed:', e)
       useAppStore.setState({ error: i18n.t('store.searchFailed') + ': ' + ((e as any).message || e) })
     } finally {
       set({ searching: false })
@@ -157,7 +160,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       const newTotal = get().searchTotal
       set({ searchPage: page, searchHasMore: get().searchResults.length < newTotal })
     } catch (e: any) {
-      console.error('Search failed:', e)
+      logger.error('Search failed:', e)
       set({ searchError: e?.message || i18n.t('store.searchRetry') })
     } finally {
       set({ searchInitLoading: false, searchMoreLoading: false })

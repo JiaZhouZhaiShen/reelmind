@@ -20,10 +20,18 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { ...headers, ...(options?.headers as Record<string, string> || {}) },
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: { ...headers, ...(options?.headers as Record<string, string> || {}) },
+      ...options,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof TypeError && err.message === 'Failed to fetch'
+      ? '网络连接失败，请检查网络后重试'
+      : String(err);
+    throw new Error(msg);
+  }
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`API error ${res.status}: ${err}`);

@@ -3,6 +3,9 @@ import type { AdminDashboard, SystemStatus } from '../api/client'
 import { api } from '../api/client'
 import i18n from '../i18n/config'
 
+import { logger } from '../utils/logger';
+
+
 interface AdminState {
   adminDashboard: AdminDashboard | null
   systemStatus: SystemStatus | null
@@ -23,7 +26,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       const adminDashboard = await api.getAdminDashboard()
       set({ adminDashboard, dashboardError: null })
     } catch (e) {
-      console.error('Failed to load admin dashboard:', e)
+      logger.error('Failed to load admin dashboard:', e)
       set({ dashboardError: i18n.t('store.loadFailed') + ': ' + ((e as any).message || e) })
     }
   },

@@ -113,3 +113,14 @@ def get_ai_session(db_path=None):
     Session = sessionmaker(bind=engine)
     return Session()
 
+from contextlib import contextmanager
+
+@contextmanager
+def ai_session(db_path=None):
+    """AI session context manager that auto-closes, even on exceptions."""
+    session = get_ai_session(db_path)
+    try:
+        yield session
+    finally:
+        session.close()
+

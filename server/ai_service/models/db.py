@@ -61,8 +61,8 @@ def get_pg_engine():
     if _pg_engine is None:
         host = os.environ.get("DB_HOST", "postgres")
         port = os.environ.get("DB_PORT", "5432")
-        user = os.environ.get("DB_USER", "reelmind")
-        password = os.environ.get("DB_PASSWORD", "reelmind")
+        user = os.environ.get("DB_USER", "")
+        password = os.environ.get("DB_PASSWORD", "")
         db = os.environ.get("DB_NAME", "reelmind")
         url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
         _pg_engine = create_engine(url, pool_size=2, max_overflow=2, pool_pre_ping=True)

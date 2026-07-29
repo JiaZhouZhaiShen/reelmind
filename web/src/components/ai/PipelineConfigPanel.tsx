@@ -9,6 +9,9 @@ import { BatchProgressSection } from "./BatchProgressSection"
 import * as api from "../../api/ai"
 import type { BatchCheckpointInfo } from "../../types/ai"
 
+import { logger } from '../../utils/logger';
+
+
 type Tab = "manual" | "auto" | "single"
 
 const ALL_ENGINES = [
@@ -174,7 +177,7 @@ export function PipelineConfigPanel() {
        loadPendingCount(engines, cfg.filters?.max_file_size_mb, cfg.filters?.max_duration_minutes)
      }
    } catch (e) {
-     console.error("Failed to reset error jobs", e)
+     logger.error("Failed to reset error jobs", e)
      useStore.getState().setError("Failed to reset error jobs")
    } finally {
       setResetting(false)

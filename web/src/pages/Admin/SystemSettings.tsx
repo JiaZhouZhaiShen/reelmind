@@ -4,6 +4,9 @@ import { api } from "../../api/client"
 import type { AdminSettingValue, MetadataFieldDef } from "../../api/client"
  import { Save, Loader2, ChevronDown, ChevronRight } from "lucide-react"
 
+import { logger } from '../../utils/logger';
+
+
 export default function SystemSettingsPage() {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<Record<string, AdminSettingValue>>({})
@@ -28,7 +31,7 @@ export default function SystemSettingsPage() {
       setMetadataFields(data.fields)
       setMetadataGroups(data.groups)
     } catch (e) {
-      console.error("Failed to load metadata fields:", e)
+      logger.error("Failed to load metadata fields:", e)
     }
   }
 
@@ -41,7 +44,7 @@ export default function SystemSettingsPage() {
       Object.entries(data).forEach(([k, v]) => { initial[k] = v.value })
       setEdits(initial)
     } catch (e) {
-      console.error("Failed to load settings:", e)
+      logger.error("Failed to load settings:", e)
     } finally {
       setLoading(false)
     }
@@ -55,7 +58,7 @@ export default function SystemSettingsPage() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (e) {
-      console.error("Failed to save settings:", e)
+      logger.error("Failed to save settings:", e)
       setSaveError(e instanceof Error ? e.message : "保存失败，请查看控制台")
     } finally {
       setSaving(false)

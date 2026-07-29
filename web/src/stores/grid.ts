@@ -139,7 +139,6 @@ export const useGridStore = create<GridState>((set, get) => ({
       gridTimelineYears: [],
       gridFilterTags: [],
      gridFiltering: false,
-   })
-   useAppStore.setState({ assetsById: {} })
+})
 },
 }))

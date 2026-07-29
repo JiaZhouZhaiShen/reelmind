@@ -121,7 +121,10 @@ def _check_auto_conditions(config: dict) -> bool:
         req = urllib.request.Request(f"{AI_SERVICE_URL}/health")
         with urllib.request.urlopen(req, timeout=3) as resp:
             body = json.loads(resp.read())
-            total_gb = body.get("total_gb", 0) or 1
+            total_gb = body.get("total_gb", 0)
+        if total_gb <= 0:
+            logger.warning("GPU health returned total_gb=%s, skipping this cycle", total_gb)
+            return False
             total_used = body.get("total_used_gb", 0)
             total_pct = total_used / total_gb * 100
             if total_pct > gpu_threshold:
