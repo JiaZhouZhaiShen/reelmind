@@ -84,7 +84,7 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile.slim
-    image: reelmind/server-slim:latest
+    image: ${REELMIND_SERVER_IMAGE:-reelmind/server-slim:latest}
     container_name: reelmind-server
     logging: *default-logging
     restart: always
@@ -151,7 +151,7 @@ services:
     build:
       context: .
       dockerfile: server/orchestrator/Dockerfile
-    image: reelmind/orchestrator:latest
+    image: ${REELMIND_ORCHESTRATOR_IMAGE:-reelmind/orchestrator:latest}
     container_name: reelmind-orchestrator
     logging: *default-logging
     restart: always
@@ -181,7 +181,7 @@ services:
     build:
       context: .
       dockerfile: server/ai_service/Dockerfile
-    image: reelmind/ai:latest
+    image: ${REELMIND_AI_IMAGE:-reelmind/ai:latest}
     container_name: reelmind-ai
     logging: *default-logging
     runtime: nvidia
@@ -254,7 +254,7 @@ services:
     build:
       context: ./nginx
       dockerfile: Dockerfile
-    image: reelmind/nginx:latest
+    image: ${REELMIND_NGINX_IMAGE:-reelmind/nginx:latest}
     container_name: reelmind-nginx
     logging: *default-logging
     restart: always

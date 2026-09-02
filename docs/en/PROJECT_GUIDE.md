@@ -160,7 +160,7 @@ Notes when deploying from a GitHub clone:
 | Item | Notes |
 |------|-------|
 | `.env.example` is committed | The template contains `change-me` placeholders, no real secrets; copy it directly after clone |
-| **All images are built locally** | The repo is not published to a Docker registry; build the 4 self-built images (server-slim / orchestrator / ai / nginx) with `docker compose build`; postgres / redis use official images and need no build |
+| **Images: GHCR optional, local build by default** | Self-built images are published to `ghcr.io/jiazhouzhaishen/*` (Public); without `REELMIND_*_IMAGE` vars you still run `docker compose build`; with them, run `docker compose pull` (see README). postgres / redis use official images |
 | **Node version** | Frontend builds need Node.js >= 18 (Vite 5), 20 LTS recommended; no `.nvmrc` yet |
 | `media/` samples are not committed | Create `media/` or mount an external directory after clone (see `EXTERNAL_MEDIA_DIR` in `.env`) |
 | `data/` is not committed | PG/SQLite/model cache are generated at runtime; an empty `data/` after clone is normal |
@@ -201,6 +201,8 @@ docker compose build
 # Start
 docker compose up -d
 ```
+
+> To deploy from GHCR without a local build: set the four `REELMIND_*_IMAGE` variables (e.g. `REELMIND_SERVER_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-server:v9.26.0901`), then run `docker compose pull && docker compose up -d`. The frontend `web/dist` still needs one local build in v1 (see README).
 
 ### Step 5: Verify health
 

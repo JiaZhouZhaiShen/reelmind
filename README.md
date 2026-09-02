@@ -31,6 +31,33 @@ ReelMind manages thousands of video assets, auto-extracts scenes / subtitles / o
 |---|---|---|
 | ![Search results](docs/images/search-results.png) | ![Video player](docs/images/video-player.png) | ![AI engine](docs/images/ai-engine.png) |
 
+## Deploy from GitHub Container Registry (ghcr)
+
+Prebuilt images are published to GHCR, so you can skip `docker compose build`:
+
+```bash
+git clone https://github.com/JiaZhouZhaiShen/reelmind.git
+cd reelmind
+
+# 1. Configure environment (template is committed; placeholder only, no secrets)
+cp .env.example .env
+
+# 2. Build the frontend once (v1: web/dist is mounted read-only, not baked into images yet)
+cd web && npm install && npm run build && cd ..
+
+# 3. Point compose at GHCR images (the version tag matches a git release)
+export REELMIND_SERVER_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-server:v9.26.0901
+export REELMIND_ORCHESTRATOR_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-orchestrator:v9.26.0901
+export REELMIND_AI_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-ai:v9.26.0901
+export REELMIND_NGINX_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-nginx:v9.26.0901
+
+# 4. Pull and start (no local image build)
+docker compose pull
+docker compose up -d
+```
+
+Without those variables the default stays unchanged: `docker compose build && docker compose up -d` builds locally.
+
 ## Quick Start
 
 ```bash
@@ -44,7 +71,7 @@ cp .env.example .env
 # 2. Build frontend (web/dist is mounted read-only into containers)
 cd web && npm install && npm run build && cd ..
 
-# 3. Build images (not published to a registry yet — local build) and start
+# 3. Build images locally and start (registry alternative: see "Deploy from ghcr" above)
 docker compose build
 docker compose up -d
 
