@@ -7,9 +7,9 @@
 ## 铁律速查（完整版见 docs/铁律.md，细则见 docs/规范/，硬规则自查 ./scripts/check.sh）
 
 - **工作流程**：R0.1 先验证再动手 / R0.2 先方案后代码 / R0.3 备份铁律 / R0.4 最小改动 / R0.5 方案必有边界 / R0.6 质量通用标准
-- **后端**：R1.1 Server 无 AI 推理 / R1.2 双库分离不双写 / R1.3 状态唯一入口 set_job_status / R1.4 接口≤1000行 / R1.5 不做渲染计算
+- **后端**：R1.1 Server 无 AI 推理 / R1.2 双库分离不双写 / R1.3 状态唯一入口每容器一模块(Server=core/job_helpers.py, AI=ai_service/job_helpers.py) / R1.4 接口≤1000行 / R1.5 不做渲染计算
 - **前端**：R2.1 状态归 store / R2.2 子组件读 store / R2.3 三态自包含 / R2.4 ErrorBoundary / R2.5 高频组件 memo / R2.6 禁空 catch / R2.7 i18n 无硬编码中文 / R2.8 无.bak死代码 / R2.9 TS严格 / R2.10 页面≤1000行
-- **API**：R3.1 按域拆分 / R3.2 统一错误展示
+- **API**：R3.1 按域拆分(client.ts≤50行,已入check.sh) / R3.2 统一错误展示
 - **调度**：R4.1 状态PG结果SQLite / R4.2 展示看 results_ready
 - **容器**：R5.1 AI/Orchestrator stateless / R5.2 禁 docker.sock / R5.3 trace_id 追踪
 - **数据**：R6.1 模型变更走迁移 / R6.2 数据先备份后动 / R6.3 删除走闭环
