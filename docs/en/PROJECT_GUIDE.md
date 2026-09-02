@@ -202,7 +202,7 @@ docker compose build
 docker compose up -d
 ```
 
-> To deploy from GHCR without a local build: set the four `REELMIND_*_IMAGE` variables (e.g. `REELMIND_SERVER_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-server:v9.26.0901`), then run `docker compose pull && docker compose up -d`. The frontend `web/dist` still needs one local build in v1 (see README).
+> To deploy from GHCR without a local build: set the four `REELMIND_*_IMAGE` variables (default `latest`; pin a release tag once published, e.g. `REELMIND_SERVER_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-server:latest`), then run `docker compose pull && docker compose up -d`. The frontend `web/dist` still needs one local build in v1 (see README).
 
 ### Step 5: Verify health
 

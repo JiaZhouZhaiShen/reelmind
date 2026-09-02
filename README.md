@@ -45,11 +45,11 @@ cp .env.example .env
 # 2. Build the frontend once (v1: web/dist is mounted read-only, not baked into images yet)
 cd web && npm install && npm run build && cd ..
 
-# 3. Point compose at GHCR images (the version tag matches a git release)
-export REELMIND_SERVER_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-server:v9.26.0901
-export REELMIND_ORCHESTRATOR_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-orchestrator:v9.26.0901
-export REELMIND_AI_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-ai:v9.26.0901
-export REELMIND_NGINX_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-nginx:v9.26.0901
+# 3. Point compose at GHCR images. `latest` tracks main; pin a release tag (e.g. :v9.26.0901) when available
+export REELMIND_SERVER_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-server:latest
+export REELMIND_ORCHESTRATOR_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-orchestrator:latest
+export REELMIND_AI_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-ai:latest
+export REELMIND_NGINX_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-nginx:latest
 
 # 4. Pull and start (no local image build)
 docker compose pull
