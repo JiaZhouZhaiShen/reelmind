@@ -17,6 +17,18 @@ ReelMind manages thousands of video assets, auto-extracts scenes / subtitles / o
 
 **AI pipeline (sequential):** TransNetV2 (scene cut) → YOLOv8n (objects) → PaddleOCR (text) → OpenCLIP (semantic vectors) → faster-whisper (transcript) (+ optional pyannote diarization).
 
+## Screenshots
+
+> Captured from a real local ReelMind instance. Thumbnails are blurred to protect private video content.
+
+| Login page | Video library grid |
+|---|---|
+| ![Login](docs/images/login.png) | ![Video library grid](docs/images/library-grid.png) |
+
+| Search results | Video player | AI engine |
+|---|---|---|
+| ![Search results](docs/images/search-results.png) | ![Video player](docs/images/video-player.png) | ![AI engine](docs/images/ai-engine.png) |
+
 ## Quick Start
 
 ```bash

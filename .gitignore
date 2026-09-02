@@ -60,6 +60,9 @@ vite.log
 *.png
 *.jpg
 *.jpeg
+!docs/images/*.png
+!docs/images/*.jpg
+!docs/images/*.jpeg
 
 # Text temp files
 marquee_code.txt
