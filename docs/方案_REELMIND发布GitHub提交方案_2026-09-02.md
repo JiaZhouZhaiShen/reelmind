@@ -14,7 +14,7 @@
 | 大文件入库 | ✅ 无 >1MB 跟踪文件 |
 | 敏感目录入库 | ✅ `data/`、`media/`、`backups/`、`node_modules/`、`web/dist/`、`torch_wheels/` 均未入库 |
 | `.env` 真实配置 | ✅ 未被跟踪（`.gitignore` 保留排除） |
-| LICENSE | ✅ MIT（2024 ReelMind Contributors） |
+| LICENSE | ✅ MIT（2024 JiaZhouZhaiShen） |
 | 当前推送状态 | ✅ 全部提交已推送到 `github/main`（私有仓库已建） |
 | 暂存区 | 仅 `.env.example` 已暂存；`.gitignore`、修订记录、新部署文档未提交 |
 

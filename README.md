@@ -104,4 +104,4 @@ cd web && npm run typecheck     # tsc --noEmit
 
 ## License
 
-MIT © 2024 ReelMind Contributors
+MIT © 2024 JiaZhouZhaiShen
