@@ -1,5 +1,7 @@
 # ReelMind — AI-Powered Self-Hosted Video Library
 
+[![CI](https://github.com/JiaZhouZhaiShen/reelmind/actions/workflows/ci.yml/badge.svg)](https://github.com/JiaZhouZhaiShen/reelmind/actions/workflows/ci.yml)
+
 > A self-hosted video library manager for editors, teams, and AI agents. Inspired by IMMICH, **specialized for video**.
 
 ReelMind manages thousands of video assets, auto-extracts scenes / subtitles / object tags / OCR / CLIP embeddings, and provides full-text + semantic hybrid search — with AI inference fully decoupled from the web API via a separate GPU container.
