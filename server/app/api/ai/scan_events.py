@@ -4,12 +4,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from ...config import settings
+from ...auth import decode_access_token
 from .shared import _orchestrate_batch
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,11 @@ router = APIRouter()
 
 
 @router.get("/scan-events")
-async def scan_events_sse():
+async def scan_events_sse(token: str = Query(..., description="JWT access token for EventSource auth")):
+    payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
     async def event_stream():
         try:
             import redis.asyncio as redis_async

@@ -95,3 +95,24 @@ async def get_current_user(
         )
 
     return {"id": str(user.id), "username": user.username, "role": user.role}
+
+
+# ---------------------------------------------------------------------------
+# Query-parameter token dependency (for <img>/<video>/<track> — no DB hit)
+# ---------------------------------------------------------------------------
+from fastapi import Query
+
+
+async def get_current_user_from_query(token: str = Query(..., description="JWT token for media auth")):
+    """Lightweight auth for media serving — validates JWT only, no DB lookup."""
+    payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    if payload.get("sub") is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )

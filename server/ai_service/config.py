@@ -8,10 +8,11 @@ class AISettings:
     """Minimal config for the standalone AI container."""
 
     # PostgreSQL
+    # 🔴 安全警告: 以下 DB_USER/DB_PASSWORD 为开发默认值，生产环境务必通过环境变量覆盖！
     DB_HOST: str = os.environ.get("DB_HOST", "postgres")
     DB_PORT: int = int(os.environ.get("DB_PORT", "5432"))
-    DB_USER: str = os.environ.get("DB_USER", "")
-    DB_PASSWORD: str = os.environ.get("DB_PASSWORD", "")
+    DB_USER: str = os.environ.get("DB_USER", "reelmind")     # 🔴 默认值，生产环境务必覆盖
+    DB_PASSWORD: str = os.environ.get("DB_PASSWORD", "reelmind")  # 🔴 默认值，生产环境务必覆盖
     DB_NAME: str = os.environ.get("DB_NAME", "reelmind")
 
     # Redis

@@ -59,10 +59,11 @@ _pg_engine = None
 def get_pg_engine():
     global _pg_engine
     if _pg_engine is None:
+        # 🔴 安全警告: 以下为开发默认值，生产环境务必通过环境变量覆盖！
         host = os.environ.get("DB_HOST", "postgres")
         port = os.environ.get("DB_PORT", "5432")
-        user = os.environ.get("DB_USER", "")
-        password = os.environ.get("DB_PASSWORD", "")
+        user = os.environ.get("DB_USER", "reelmind")
+        password = os.environ.get("DB_PASSWORD", "reelmind")
         db = os.environ.get("DB_NAME", "reelmind")
         url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
         _pg_engine = create_engine(url, pool_size=2, max_overflow=2, pool_pre_ping=True)

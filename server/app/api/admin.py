@@ -133,60 +133,15 @@ async def get_system_status(
     _: dict = Depends(require_admin),
 ):
     """Aggregate system health for the admin dashboard:
-    Docker container stats (CPU/Mem for server & AI),
     GPU usage and model load status from AI container.
     """
-    import asyncio
     import json
     from httpx import AsyncClient
 
     result: dict = {
         "gpu": {"ai_used": 0, "total_used": 0, "total": 0, "ai_percent": 0, "total_percent": 0},
         "models": {},
-        "containers": {},
     }
-
-    async def _container_stats(name: str) -> dict | None:
-        try:
-            def _fetch():
-                from .docker_api import DockerAPI
-                d = DockerAPI()
-                info = d.inspect_container(name)
-                if not info:
-                    return None
-                status = info.get("State", {}).get("Status", "unknown")
-                cid = info.get("Id", "")[:12]
-                if not cid:
-                    return {"status": status, "cpu_percent": 0, "memory_mb": 0, "memory_limit_mb": 0, "memory_percent": 0}
-                code, raw = d._request("GET", f"/containers/{cid}/stats?stream=false")
-                if code != 200 or not raw:
-                    return {"status": status, "cpu_percent": 0, "memory_mb": 0, "memory_limit_mb": 0, "memory_percent": 0}
-                s = json.loads(raw)
-                cpu_stats = s.get("cpu_stats", {})
-                precpu = s.get("precpu_stats", {})
-                mem_stats = s.get("memory_stats", {})
-                cpu_delta = cpu_stats.get("cpu_usage", {}).get("total_usage", 0) - precpu.get("cpu_usage", {}).get("total_usage", 0)
-                sys_delta = cpu_stats.get("system_cpu_usage", 0) - precpu.get("system_cpu_usage", 0)
-                online_cpus = cpu_stats.get("online_cpus", 1)
-                cpu_pct = round((cpu_delta / max(sys_delta, 1)) * online_cpus * 100, 1) if sys_delta > 0 else 0
-                mem_usage = mem_stats.get("usage", 0)
-                mem_limit = mem_stats.get("limit", 1)
-                mem_mb = round(mem_usage / 1024 / 1024, 1)
-                mem_limit_mb = round(mem_limit / 1024 / 1024, 1)
-                mem_pct = round(mem_usage / max(mem_limit, 1) * 100, 1)
-                return {"status": status, "cpu_percent": cpu_pct, "memory_mb": mem_mb, "memory_limit_mb": mem_limit_mb, "memory_percent": mem_pct}
-            return await asyncio.to_thread(_fetch)
-        except Exception as e:
-            logger.warning("Failed to get stats for container '%s': %s", name, e)
-            return {"status": "unknown", "cpu_percent": 0, "memory_mb": 0, "memory_limit_mb": 0, "memory_percent": 0, "error": str(e)[:80]}
-
-    # Fetch container stats concurrently (was sequential before)
-    server_res, ai_res = await asyncio.gather(
-        _container_stats("reelmind-server"),
-        _container_stats("reelmind-ai"),
-    )
-    result["containers"]["server"] = server_res
-    result["containers"]["ai"] = ai_res
 
     # Fetch GPU + model status from AI container
     global _last_gpu_cache, _last_models_cache
@@ -338,23 +293,35 @@ async def view_log_file(
 ):
     """Read the tail of a log file."""
     log_dir = s.LOG_DIR
-    log_path = Path(log_dir)
+    log_path = Path(log_dir).resolve()
     if not log_path.exists():
         candidates = [
-            Path(s.DATA_ROOT) / "logs",
-            Path.cwd() / "logs",
-            Path.home() / ".reelmind" / "logs",
+            Path(s.DATA_ROOT).resolve() / "logs",
+            Path.cwd().resolve() / "logs",
+            Path.home().resolve() / ".reelmind" / "logs",
         ]
         for c in candidates:
             if c.exists() and c.is_dir():
-                log_path = c
+                log_path = c.resolve()
                 break
-    file_path = log_path / filename
+
+    # Resolve to canonical path — prevents directory traversal attacks
+    file_path = (log_path / filename).resolve()
+
+    # Security: ensure resolved path stays within the log directory subtree
+    if not str(file_path).startswith(str(log_path) + os.sep) and str(file_path) != str(log_path):
+        _logger.warning("Path traversal attempt blocked: %s", filename)
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(404, f"Log file '{filename}' not found")
     allowed = (".log", ".txt", ".json")
-    if file_path.suffix not in allowed:
+    if file_path.suffix.lower() not in allowed:
         raise HTTPException(403, f"File type '{file_path.suffix}' not allowed")
+    # Additional guard: refuse to read files larger than 100 MB
+    max_size = 100 * 1024 * 1024
+    if file_path.stat().st_size > max_size:
+        raise HTTPException(status_code=413, detail="File too large")
     total_bytes = file_path.stat().st_size
     total_lines = 0
     lines = []

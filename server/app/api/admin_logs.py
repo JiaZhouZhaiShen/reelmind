@@ -12,7 +12,10 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
 from ..auth import get_current_user
-from .docker_api import DockerAPI
+try:
+    from .docker_api import DockerAPI
+except Exception:
+    DockerAPI = None  # docker.sock not available
 from ..services.log_service import (
     list_sources,
     fetch_logs,
@@ -189,17 +192,18 @@ async def get_diagnostics(
 
         container_details = {}
         try:
-            api = DockerAPI()
-            loop = asyncio.get_event_loop()
-            containers = await loop.run_in_executor(None, api.list_containers)
-            for c in containers[:20]:
-                names = c.get("Names", [])
-                name = names[0].lstrip("/") if names else "?"
-                container_details[name] = {
-                    "state": c.get("State", "?"),
-                    "status": c.get("Status", "?"),
-                    "id": c.get("Id", "")[:12],
-                }
+            if DockerAPI is not None:
+                api = DockerAPI()
+                loop = asyncio.get_event_loop()
+                containers = await loop.run_in_executor(None, api.list_containers)
+                for c in containers[:20]:
+                    names = c.get("Names", [])
+                    name = names[0].lstrip("/") if names else "?"
+                    container_details[name] = {
+                        "state": c.get("State", "?"),
+                        "status": c.get("Status", "?"),
+                        "id": c.get("Id", "")[:12],
+                    }
         except Exception as e:
             logger.warning("Could not fetch container details: %s", e)
 

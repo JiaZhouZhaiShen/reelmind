@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 import logging
+import os
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -35,11 +36,16 @@ async def lifespan(app: FastAPI):
     _logger.info("Database initialised - %s", settings.DATABASE_URL.replace(settings.DB_PASSWORD, "****") if settings.DB_PASSWORD else settings.DATABASE_URL)
 
     # Validate security-critical settings
-    if not settings.DB_PASSWORD:
-        _logger.critical("DB_PASSWORD is not set — database connection will fail")
-    if not settings.JWT_SECRET:
-        _logger.critical("JWT_SECRET is not set — authentication is insecure. Set a strong random secret via JWT_SECRET env var.")
-        raise RuntimeError("JWT_SECRET must be configured. Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
+    if settings.JWT_SECRET == "reelmind-dev-secret-change-me-in-production":
+        _logger.warning(
+            "╔══════════════════════════════════════════════════════════════════════╗\n"
+            "║  🔴 SECURITY WARNING: JWT_SECRET is using the default dev value!    ║\n"
+            "║  Anyone can forge authentication tokens with this key.              ║\n"
+            "║  Set a strong random secret via JWT_SECRET env var before           ║\n"
+            "║  exposing this service to any network.                              ║\n"
+            "║  Generate: python -c \"import secrets; print(secrets.token_urlsafe(32))\"║\n"
+            "╚══════════════════════════════════════════════════════════════════════╝"
+        )
 
     # Load system settings into in-memory cache
     from .core import settings_cache as _settings_cache
@@ -138,12 +144,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, lifespan=lifespan)
 
+# ── CORS origin resolution ─────────────────────────────────────────────
+# 🔴 Security: never use allow_credentials=True with allow_origins=["*"]
+_env_origins = os.environ.get("CORS_ORIGINS", "")
+if _env_origins:
+    cors_origins = [o.strip() for o in _env_origins.split(",") if o.strip()]
+elif settings.CORS_ORIGINS:
+    cors_origins = settings.CORS_ORIGINS
+else:
+    cors_origins = ["http://localhost:2588", "http://127.0.0.1:2588"]
+
 # ── Middleware stack (order matters: access log first) ────────────────
 app.add_middleware(AccessLogMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=True if cors_origins != ["*"] else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -154,24 +170,38 @@ from .api import tags
 from .api import admin_logs
 from .api import admin, admin_jobs, admin_users, admin_extras
 from .api import ai
+from .api.ai import scan_events
 from .api import scan
-app.include_router(assets.router, prefix=settings.API_PREFIX)
-app.include_router(assets_browse.router, prefix=settings.API_PREFIX)
-app.include_router(assets_detail.router, prefix=settings.API_PREFIX)
-app.include_router(assets_repair.router, prefix=settings.API_PREFIX)
-app.include_router(libraries.router, prefix=settings.API_PREFIX)
-app.include_router(search.router, prefix=settings.API_PREFIX)
-app.include_router(preview.router, prefix=settings.API_PREFIX)
-app.include_router(system.router, prefix=settings.API_PREFIX)
-app.include_router(auth.router, prefix=settings.API_PREFIX)
-app.include_router(tags.router, prefix=settings.API_PREFIX)
-app.include_router(admin_logs.router, prefix=settings.API_PREFIX)
-app.include_router(admin.router, prefix=settings.API_PREFIX)
-app.include_router(admin_jobs.router, prefix=settings.API_PREFIX)
-app.include_router(admin_users.router, prefix=settings.API_PREFIX)
-app.include_router(admin_extras.router, prefix=settings.API_PREFIX)
-app.include_router(ai.router, prefix=settings.API_PREFIX)
-app.include_router(scan.router, prefix=settings.API_PREFIX)
+from .auth import get_current_user, get_current_user_from_query
+
+# ── Protected routes (auto-inject authentication) ─────────────────────
+# All routes under this group require a valid JWT bearer token.
+# Individual endpoints inside may additionally require admin role.
+protected = APIRouter(dependencies=[Depends(get_current_user)])
+
+protected.include_router(assets.router)
+protected.include_router(assets_detail.router)
+protected.include_router(assets_browse.router)
+protected.include_router(assets_repair.router)
+protected.include_router(libraries.router)
+protected.include_router(search.router)
+protected.include_router(tags.router)
+protected.include_router(ai.router)
+
+app.include_router(protected, prefix=settings.API_PREFIX)
+
+# ── Public / separately-protected routes ──────────────────────────────
+app.include_router(scan_events.router, prefix=settings.API_PREFIX + "/ai")   # SSE — query-param token (EventSource cannot set headers)
+app.include_router(preview.router, prefix=settings.API_PREFIX,
+                   dependencies=[Depends(get_current_user_from_query)])  # media — query-param token (<img>/<video> cannot set headers)
+app.include_router(auth.router, prefix=settings.API_PREFIX)          # login/register — public
+app.include_router(system.router, prefix=settings.API_PREFIX)        # scan-settings — has own auth
+app.include_router(scan.router, prefix=settings.API_PREFIX)          # has require_auth on all endpoints
+app.include_router(admin.router, prefix=settings.API_PREFIX)         # has require_admin
+app.include_router(admin_jobs.router, prefix=settings.API_PREFIX)    # has require_admin
+app.include_router(admin_users.router, prefix=settings.API_PREFIX)   # has require_admin
+app.include_router(admin_extras.router, prefix=settings.API_PREFIX)  # has require_admin
+app.include_router(admin_logs.router, prefix=settings.API_PREFIX)    # has require_admin
 
 
 @app.get(settings.API_PREFIX + "/ping")

@@ -1,4 +1,4 @@
-import { BASE, request } from './base';
+import { BASE, request, getToken } from './base';
 
 /* ── AI 专用 request（自动拼接 /ai 前缀） ── */
 function aiRequest<T>(path: string, options?: RequestInit): Promise<T> {
@@ -89,7 +89,9 @@ export function progressUrl(videoId: string) {
 }
 
 export function scanEventsUrl() {
-  return `${BASE}/ai/scan-events`;
+  const token = getToken();
+  const sep = '?token=';
+  return `${BASE}/ai/scan-events${sep}${encodeURIComponent(token || '')}`;
 }
 
 // ── Auto-Run ──

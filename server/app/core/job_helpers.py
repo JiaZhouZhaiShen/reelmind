@@ -233,3 +233,169 @@ def reset_stale_jobs(
     ).update({"status": target_status})
     session.commit()
     return count
+
+
+def claim_jobs_batch(
+    session: Session,
+    *,
+    engines: list[str],
+    max_file_size_bytes: int = 0,
+    max_duration_seconds: int = 0,
+    batch_size: int = 20,
+) -> list[str]:
+    """批量 claim：pending→running（SKIP LOCKED，原子）。唯一批量写入口。"""
+    _CLAIM_SQL = text("""
+        WITH eligible_media AS (
+            SELECT DISTINCT j.media_id
+            FROM ai_engine_jobs j
+            JOIN assets a ON a.id = j.media_id
+            WHERE j.status = 'pending'
+              AND j.engine_name = ANY(:engines)
+              AND NOT EXISTS (
+                  SELECT 1 FROM ai_engine_jobs d
+                  WHERE d.media_id = j.media_id
+                    AND d.engine_name = ANY(j.depends_on)
+                    AND d.status != 'completed'
+              )
+              AND a.file_size IS NOT NULL AND a.file_size > 0
+              AND (:max_file_size_bytes <= 0 OR a.file_size <= :max_file_size_bytes)
+              AND (:max_duration_seconds <= 0
+                  OR (a.duration IS NOT NULL AND a.duration > 0 AND a.duration <= :max_duration_seconds))
+            ORDER BY j.media_id
+            LIMIT :batch_size
+        ),
+        eligible AS (
+            SELECT j.media_id
+            FROM ai_engine_jobs j
+            WHERE j.media_id IN (SELECT media_id FROM eligible_media)
+              AND j.status = 'pending'
+              AND j.engine_name = ANY(:engines)
+            FOR UPDATE OF j SKIP LOCKED
+        )
+        UPDATE ai_engine_jobs
+        SET status = 'running',
+            started_at = NOW(),
+            retry_count = 0,
+            error_message = NULL
+        FROM eligible
+        WHERE ai_engine_jobs.media_id = eligible.media_id
+          AND ai_engine_jobs.status = 'pending'
+          AND ai_engine_jobs.engine_name = ANY(:engines)
+        RETURNING ai_engine_jobs.media_id
+    """)
+    rows = session.execute(
+        _CLAIM_SQL,
+        {
+            "engines": engines,
+            "batch_size": batch_size,
+            "max_file_size_bytes": max_file_size_bytes,
+            "max_duration_seconds": max_duration_seconds,
+        },
+    ).fetchall()
+    return list(dict.fromkeys(str(r[0]) for r in rows))
+
+
+def recover_timeout_jobs(
+    session: Session,
+    timeout_minutes: int = 180,
+    max_retries: int = 3,
+) -> dict[str, int]:
+    """recover_stale + recover_exhausted 合并。返回 {"recovered": n, "exhausted": n}。"""
+    params = {"timeout": str(timeout_minutes), "max_retries": max_retries}
+    recovered = session.execute(text("""
+        UPDATE ai_engine_jobs
+        SET status = 'pending',
+            retry_count = retry_count + 1,
+            started_at = NULL,
+            completed_at = NULL,
+            error_message = CASE
+                WHEN retry_count >= :max_retries THEN 'timeout after ' || :timeout || ' min'
+                ELSE 'timeout, retrying'
+            END
+        WHERE status = 'running'
+          AND started_at < NOW() - (:timeout || ' minutes')::interval
+          AND retry_count < :max_retries
+    """), params).rowcount
+    exhausted = session.execute(text("""
+        UPDATE ai_engine_jobs
+        SET status = 'error',
+            started_at = NULL,
+            completed_at = NOW(),
+            error_message = 'exhausted retries after timeout'
+        WHERE status = 'running'
+          AND started_at < NOW() - (:timeout || ' minutes')::interval
+          AND retry_count >= :max_retries
+    """), params).rowcount
+    session.commit()
+    return {"recovered": recovered, "exhausted": exhausted}
+
+
+async def insert_jobs_batch_async(session, media_ids: list[str]) -> int:
+    """async 批量创建 job 行，indexer 唯一入口（原 indexer 裸 INSERT 迁入）。"""
+    if not media_ids:
+        return 0
+    rows = await session.execute(
+        text("SELECT DISTINCT media_id::text FROM ai_engine_jobs WHERE media_id = ANY(:ids)"),
+        {"ids": media_ids},
+    )
+    existing_mids = {r[0] for r in rows}
+    new_jobs = []
+    for mid in media_ids:
+        if mid not in existing_mids:
+            for eng in ENGINES:
+                new_jobs.append({
+                    "media_id": mid,
+                    "engine_name": eng,
+                    "status": "pending",
+                    "depends_on": list(ENGINE_DEPENDS.get(eng, [])),
+                })
+    if new_jobs:
+        await session.execute(
+            text("""
+                INSERT INTO ai_engine_jobs
+                    (media_id, engine_name, status, depends_on)
+                VALUES
+                    (:media_id, :engine_name, :status, :depends_on)
+            """),
+            new_jobs,
+        )
+    return len(new_jobs)
+
+
+def reclaim_timed_out_jobs(session: Session, media_ids, engines=None) -> int:
+    """超时 chunk 回收：running→pending（唯一写入口）。"""
+    from app.models.ai_engine_job import AIEngineJob
+    if not media_ids:
+        return 0
+    q = session.query(AIEngineJob).filter(
+        AIEngineJob.media_id.in_(media_ids),
+        AIEngineJob.status == "running",
+    )
+    if engines:
+        q = q.filter(AIEngineJob.engine_name.in_(engines))
+    count = q.update({
+        "status": "pending",
+        "started_at": None,
+        "completed_at": None,
+        "error_message": "reclaimed from timed-out chunk",
+    })
+    session.commit()
+    return count
+
+
+def mark_chunk_jobs_completed(session: Session, media_ids, engines) -> int:
+    """批处理 chunk 完成后批量标记 completed（唯一写入口）。"""
+    from app.models.ai_engine_job import AIEngineJob
+    from sqlalchemy import func as sa_func
+    if not media_ids:
+        return 0
+    updated = session.query(AIEngineJob).filter(
+        AIEngineJob.media_id.in_(media_ids),
+        AIEngineJob.engine_name.in_(engines or []),
+        AIEngineJob.status == "running",
+    ).update({
+        "status": "completed",
+        "completed_at": sa_func.now(),
+    }, synchronize_session=False)
+    session.commit()
+    return updated

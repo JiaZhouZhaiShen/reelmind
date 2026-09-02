@@ -1,4 +1,4 @@
-import { request } from './base';
+import { getToken, request } from './base';
 import type { Library } from './system';
 
 export interface Asset {
@@ -151,26 +151,31 @@ export function smartSearch(params: { q?: string; library_id?: string; tags?: st
 }
 
 // ── Preview URLs ──
+function _withAuth(url: string): string {
+  const token = getToken();
+  const sep = url.includes('?') ? '&' : '?';
+  return token ? `${url}${sep}token=${encodeURIComponent(token)}` : url;
+}
 export function thumbnailUrl(id: string): string {
-  return `/api/preview/thumbnail/${id}`;
+  return _withAuth(`/api/preview/thumbnail/${id}`);
 }
 export function proxyUrl(id: string): string {
-  return `/api/preview/proxy/${id}`;
+  return _withAuth(`/api/preview/proxy/${id}`);
 }
 export function sourceUrl(id: string): string {
-  return `/api/preview/source/${id}`;
+  return _withAuth(`/api/preview/source/${id}`);
 }
 export function segmentThumbnailUrl(segId: string): string {
-  return `/api/preview/segment-thumbnail/${segId}`;
+  return _withAuth(`/api/preview/segment-thumbnail/${segId}`);
 }
 export function sceneThumbnailUrl(sceneId: string): string {
-  return `/api/preview/scene-thumbnail/${sceneId}`;
+  return _withAuth(`/api/preview/scene-thumbnail/${sceneId}`);
 }
 export function downloadUrl(id: string): string {
-  return `/api/preview/download/${id}`;
+  return _withAuth(`/api/preview/download/${id}`);
 }
 export function webvttUrl(id: string): string {
-  return `/api/preview/webvtt/${id}`;
+  return _withAuth(`/api/preview/webvtt/${id}`);
 }
 
 // ── Download Helpers ──

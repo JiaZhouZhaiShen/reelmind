@@ -77,9 +77,9 @@ async def get_auto_pending_summary():
 async def claim_auto_chunk(data: dict):
     """Orchestrator 调用：原子 claim 一个 chunk（FOR UPDATE SKIP LOCKED）。"""
     from app.database import sync_session_factory
-    from app.models.ai_engine_job import AIEngineJob, ENGINE_NAMES
+    from app.models.ai_engine_job import ENGINE_NAMES
     from app.models.orchestration_event import OrchestrationEvent
-    from sqlalchemy import text as _text
+    from app.core.job_helpers import claim_jobs_batch
     import uuid
     engines = data.get("engines", list(ENGINE_NAMES))
     batch_size = data.get("batch_size", 50)
@@ -91,55 +91,13 @@ async def claim_auto_chunk(data: dict):
     batch_id = str(uuid.uuid4())
     session = sync_session_factory()
     try:
-        _CLAIM_SQL = _text("""
-            WITH eligible_media AS (
-                SELECT DISTINCT j.media_id
-                FROM ai_engine_jobs j
-                JOIN assets a ON a.id = j.media_id
-                WHERE j.status = 'pending'
-                  AND j.engine_name = ANY(:engines)
-                  AND NOT EXISTS (
-                      SELECT 1 FROM ai_engine_jobs d
-                      WHERE d.media_id = j.media_id
-                        AND d.engine_name = ANY(j.depends_on)
-                        AND d.status != 'completed'
-                  )
-                  AND a.file_size IS NOT NULL AND a.file_size > 0
-                  AND (:max_file_size_bytes <= 0 OR a.file_size <= :max_file_size_bytes)
-                  AND (:max_duration_seconds <= 0
-                      OR (a.duration IS NOT NULL AND a.duration > 0 AND a.duration <= :max_duration_seconds))
-                ORDER BY j.media_id
-                LIMIT :batch_size
-            ),
-            eligible AS (
-                SELECT j.media_id
-                FROM ai_engine_jobs j
-                WHERE j.media_id IN (SELECT media_id FROM eligible_media)
-                  AND j.status = 'pending'
-                  AND j.engine_name = ANY(:engines)
-                FOR UPDATE OF j SKIP LOCKED
-            )
-            UPDATE ai_engine_jobs
-            SET status = 'running',
-                started_at = NOW(),
-                retry_count = 0,
-                error_message = NULL
-            FROM eligible
-            WHERE ai_engine_jobs.media_id = eligible.media_id
-              AND ai_engine_jobs.status = 'pending'
-              AND ai_engine_jobs.engine_name = ANY(:engines)
-            RETURNING ai_engine_jobs.media_id
-        """)
-        rows = session.execute(
-            _CLAIM_SQL,
-            {
-                "engines": engines,
-                "batch_size": batch_size,
-                "max_file_size_bytes": max_file_size_bytes,
-                "max_duration_seconds": max_duration_seconds,
-            }
-        ).fetchall()
-        claimed = list(dict.fromkeys(str(r[0]) for r in rows))
+        claimed = claim_jobs_batch(
+            session,
+            engines=engines,
+            max_file_size_bytes=max_file_size_bytes,
+            max_duration_seconds=max_duration_seconds,
+            batch_size=batch_size,
+        )
         if not claimed:
             session.close()
             return {"claimed": False, "batch_id": batch_id, "media_ids": []}
@@ -195,26 +153,14 @@ async def check_chunk_done(batch_id: str = Query(...), engines: str = Query(None
 async def reclaim_timed_out_chunk(data: dict):
     """Orchestrator 调用：超时后把 chunk 的 jobs 重置回 pending。"""
     from app.database import sync_session_factory
-    from app.models.ai_engine_job import AIEngineJob
+    from app.core.job_helpers import reclaim_timed_out_jobs
     media_ids = data.get("media_ids", [])
     engines = data.get("engines", [])
     if not media_ids:
         return {"reclaimed": 0}
     session = sync_session_factory()
     try:
-        q = session.query(AIEngineJob).filter(
-            AIEngineJob.media_id.in_(media_ids),
-            AIEngineJob.status == "running",
-        )
-        if engines:
-            q = q.filter(AIEngineJob.engine_name.in_(engines))
-        count = q.update({
-            "status": "pending",
-            "started_at": None,
-            "completed_at": None,
-            "error_message": "reclaimed from timed-out chunk",
-        })
-        session.commit()
+        count = reclaim_timed_out_jobs(session, media_ids, engines)
         logger.info("reclaim_timed_out_chunk: reclaimed %d jobs", count)
         return {"reclaimed": count}
     except Exception:
@@ -227,37 +173,18 @@ async def reclaim_timed_out_chunk(data: dict):
 async def recover_stale_jobs():
     """恢复超时/耗尽重试次数的 jobs（组合 recover_stale + recover_exhausted）。"""
     from app.database import sync_session_factory
-    from app.models.ai_engine_job import AIEngineJob
-    from sqlalchemy import text as _text
+    from app.core.job_helpers import recover_timeout_jobs
     timeout_minutes = 180
     max_retries = 3
     session = sync_session_factory()
     try:
-        recovered = session.execute(_text("""
-            UPDATE ai_engine_jobs
-            SET status = 'pending',
-                retry_count = retry_count + 1,
-                started_at = NULL,
-                completed_at = NULL,
-                error_message = CASE
-                    WHEN retry_count >= :max_retries THEN 'timeout after ' || :timeout || ' min'
-                    ELSE 'timeout, retrying'
-                END
-            WHERE status = 'running'
-              AND started_at < NOW() - (:timeout || ' minutes')::interval
-              AND retry_count < :max_retries
-        """), {"timeout": str(timeout_minutes), "max_retries": max_retries}).rowcount
-        exhausted = session.execute(_text("""
-            UPDATE ai_engine_jobs
-            SET status = 'error',
-                started_at = NULL,
-                completed_at = NOW(),
-                error_message = 'exhausted retries after timeout'
-            WHERE status = 'running'
-              AND started_at < NOW() - (:timeout || ' minutes')::interval
-              AND retry_count >= :max_retries
-        """), {"timeout": str(timeout_minutes), "max_retries": max_retries}).rowcount
-        session.commit()
+        result = recover_timeout_jobs(
+            session,
+            timeout_minutes=timeout_minutes,
+            max_retries=max_retries,
+        )
+        recovered = result["recovered"]
+        exhausted = result["exhausted"]
         if recovered:
             logger.info("recover_stale: recovered %d stale jobs for retry", recovered)
         if exhausted:
@@ -567,7 +494,7 @@ async def get_engine_jobs(video_id: str):
         session.close()
 @router.get("/results-ready/{video_id}")
 async def get_results_ready(video_id: str):
-    """Return results_ready flags based on actual SQLite data (Rule ㉑)."""
+    """Return results_ready flags from PG job status (Rule R4.2: 前端只消费 results-ready 出口)."""
     try:
         uid = uuid.UUID(video_id)
     except ValueError:
@@ -600,28 +527,6 @@ async def get_results_ready(video_id: str):
     finally:
         session.close()
 
-    from app.models.ai import Scene, Subtitle, SceneTag, SceneOCR, get_ai_session
-    ai_session = get_ai_session()
-    try:
-        str_id = str(uid)
-        has_scenes = ai_session.query(Scene).filter(Scene.video_id == str_id).count() > 0
-        has_subtitles = ai_session.query(Subtitle).filter(Subtitle.video_id == str_id).count() > 0
-        has_tags = ai_session.query(SceneTag).join(Scene).filter(Scene.video_id == str_id).count() > 0
-        has_ocr = ai_session.query(SceneOCR).join(Scene).filter(Scene.video_id == str_id).count() > 0
-    except Exception as e:
-        logger.error("get_results_ready SQLite failed for %s: %s", video_id, e)
-        ai_session.close()
-        return {"video_id": video_id, "state": "error", "results_ready": {}, "error": str(e)}
-    finally:
-        ai_session.close()
-
-    # Only check results_ready for engines that were configured
-    engine_to_result = {
-        "scenes": ("scenes", has_scenes),
-        "ocr": ("ocr", has_ocr),
-        "subtitle": ("subtitle", has_subtitles),
-        "tags": ("tags", has_tags),
-    }
     # Map configured engines to their result keys
     result_map = {
         "scene": "scenes",
@@ -632,8 +537,11 @@ async def get_results_ready(video_id: str):
     results_ready = {}
     for eng in _configured:
         key = result_map.get(eng)
-        if key and key in engine_to_result:
-            results_ready[key] = engine_to_result[key][1]
+        if key:
+            # Use job status from PG instead of SQLite data presence,
+            # because engines like OCR may legitimately produce zero results
+            # (e.g. no text in the video scenes).
+            results_ready[key] = (jobs.get(eng) == "completed")
 
     return {
         "video_id": video_id,

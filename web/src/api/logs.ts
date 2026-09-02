@@ -68,14 +68,6 @@ export interface AdminSettingValue {
 export interface SystemStatus {
   gpu: { ai_used: number; total_used: number; total: number; ai_percent: number; total_percent: number }
   models: Record<string, boolean>
-  containers: Record<string, {
-    status: string
-    cpu_percent: number
-    memory_mb: number
-    memory_limit_mb: number
-    memory_percent: number
-    error?: string
-  }>
 }
 export interface AdminDashboard {
   total_assets: number;

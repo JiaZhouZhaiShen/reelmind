@@ -7,7 +7,6 @@ import {
   Play, AlertTriangle, RefreshCw, Activity, Monitor
 } from "lucide-react"
 import { GPUStatusCard } from "../../components/dashboard/GPUStatusCard"
-import { ContainerStatusCard } from "../../components/dashboard/ContainerStatusCard"
 import { AIModelStatusCard } from "../../components/dashboard/AIModelStatusCard"
 
 export default function AdminDashboardPage() {
@@ -175,10 +174,8 @@ export default function AdminDashboardPage() {
           <GPUStatusCard />
         </div>
 
-        {/* Container + Model — two columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-          <ContainerStatusCard name="server" label={t("dashboard.serverContainer")} icon="server" />
-          <ContainerStatusCard name="ai" label={t("dashboard.aiContainer")} icon="ai" />
+        {/* AI Model Status */}
+        <div className="mb-4">
           <AIModelStatusCard />
         </div>
       </div>

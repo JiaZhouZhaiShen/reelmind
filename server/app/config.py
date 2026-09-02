@@ -22,11 +22,18 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # --- Database (PostgreSQL with pgvector) ---
+    #
+    # ╔══════════════════════════════════════════════════════════════════════════╗
+    # ║  🔴 安全警告 ｜ SECURITY WARNING                                        ║
+    # ║  以下数据库密码为开发默认值，仅用于本地开发/测试环境。                    ║
+    # ║  生产环境必须通过环境变量 DB_PASSWORD 覆盖为强密码！                     ║
+    # ║  切勿将默认密码用于任何公网暴露的部署。                                  ║
+    # ╚══════════════════════════════════════════════════════════════════════════╝
     DB_DRIVER: str = "postgresql+asyncpg"
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
-    DB_USER: str = ""
-    DB_PASSWORD: str = ""
+    DB_USER: str = "reelmind"
+    DB_PASSWORD: str = "reelmind"   # 🔴 开发默认值，生产环境务必通过环境变量覆盖！
     DB_NAME: str = "reelmind"
     DB_POOL_SIZE: int = 10
     DB_POOL_OVERFLOW: int = 5
@@ -97,7 +104,10 @@ class Settings(BaseSettings):
     HW_ACCEL_DEVICE: str = "/dev/dri/renderD128"
 
     # --- API ---
-    CORS_ORIGINS: list[str] = ["*"]
+    # 🔴 安全: 生产环境必须通过 CORS_ORIGINS 环境变量设置允许的域名
+    # 例如: CORS_ORIGINS="https://example.com,https://app.example.com"
+    # 多域名用逗号分隔；留空则回退到 localhost 开发模式
+    CORS_ORIGINS: list[str] = []
     API_PREFIX: str = "/api"
 
     # --- External Library scanning ---
@@ -130,7 +140,15 @@ class Settings(BaseSettings):
     # --- Frontend ---
     FRONTEND_DIST: str = "../web/dist"
     # --- Authentication ---
-    JWT_SECRET: str = ""  # MUST be set via environment variable; no default for security
+    #
+    # ╔══════════════════════════════════════════════════════════════════════════╗
+    # ║  🔴 安全警告 ｜ SECURITY WARNING                                        ║
+    # ║  以下 JWT 密钥为开发默认值，仅用于本地开发/测试环境。                    ║
+    # ║  任何人持有此密钥即可伪造任意用户的登录令牌。                            ║
+    # ║  生产环境必须通过环境变量 JWT_SECRET 设置为随机强密钥！                  ║
+    # ║  生成命令: python -c "import secrets; print(secrets.token_urlsafe(32))"  ║
+    # ╚══════════════════════════════════════════════════════════════════════════╝
+    JWT_SECRET: str = "reelmind-dev-secret-change-me-in-production"  # 🔴 开发默认值，生产环境务必覆盖！
 
 
 settings = Settings()

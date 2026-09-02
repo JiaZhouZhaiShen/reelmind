@@ -191,17 +191,8 @@ def _orchestrate_batch(task_label: str, config: dict, batch_id: str | None = Non
 
             # ── Mark chunk's engine jobs as completed so orchestrator can track progress ──
             if final_status.get("status") == "completed":
-                from app.models.ai_engine_job import AIEngineJob
-                from sqlalchemy import func as sa_func
-                updated = session.query(AIEngineJob).filter(
-                    AIEngineJob.media_id.in_(chunk),
-                    AIEngineJob.engine_name.in_(engines or []),
-                    AIEngineJob.status == "running"
-                ).update({
-                    "status": "completed",
-                    "completed_at": sa_func.now(),
-                }, synchronize_session=False)
-                session.commit()
+                from app.core.job_helpers import mark_chunk_jobs_completed
+                updated = mark_chunk_jobs_completed(session, chunk, engines or [])
                 if updated:
                     logger.info(
                         "_orchestrate_batch[%s]: chunk %d done, marked %d engine jobs completed",

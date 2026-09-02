@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# REELMIND pre-commit hook — 铁律硬规则检查（仅暂存区）
+# 对应铁律 R0-R7，执行 scripts/check.sh --staged
+# 由 git config core.hooksPath 指向本目录
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$ROOT" ]; then
+  echo "⚠️ pre-commit: 无法定位仓库根目录, 跳过"
+  exit 0
+fi
+cd "$ROOT"
+if [ -f scripts/check.sh ]; then
+  ./scripts/check.sh --staged
+  exit $?
+fi
+echo "⚠️ pre-commit: scripts/check.sh 不存在, 跳过铁律检查"
+exit 0

@@ -1018,37 +1018,12 @@ class IndexingService:
                 # 鈹€鈹€ Bridge: create AIEngineJob rows for newly-imported assets 鈹€鈹€
                 if created:
                     created_ids = [aid for aid, _ in created]
-                    existing_rows = await session.execute(
-                        _sql_text(
-                           "SELECT DISTINCT media_id::text FROM ai_engine_jobs WHERE media_id = ANY(:ids)"
-                        ),
-                        {"ids": created_ids},
+                    from app.core.job_helpers import insert_jobs_batch_async
+                    created_rows = await insert_jobs_batch_async(session, created_ids)
+                    self._logger.info(
+                        "_batch_persist: created %d AIEngineJob rows for %d new assets",
+                        created_rows, len(created),
                     )
-                    existing_mids = {r[0] for r in existing_rows}
-                    new_jobs = []
-                    for aid, _ in created:
-                        if aid not in existing_mids:
-                           for eng in ENGINES:
-                               new_jobs.append({
-                                   "media_id": aid,
-                                   "engine_name": eng,
-                                   "status": "pending",
-                                   "depends_on": list(ENGINE_DEPENDS.get(eng, [])),
-                               })
-                    if new_jobs:
-                        await session.execute(
-                           _sql_text("""
-                               INSERT INTO ai_engine_jobs
-                                   (media_id, engine_name, status, depends_on)
-                               VALUES
-                                   (:media_id, :engine_name, :status, :depends_on)
-                           """),
-                           new_jobs,
-                        )
-                        self._logger.info(
-                           "_batch_persist: created %d AIEngineJob rows for %d new assets",
-                           len(new_jobs), len(created),
-                        )
 
                 await session.commit()
         except Exception as e:

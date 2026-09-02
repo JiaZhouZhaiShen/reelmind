@@ -42,41 +42,7 @@ def _update_model_state(model_name: str, loaded: bool):
     with _model_lock:
         _model_states[model_name] = loaded
 
-_JOB_DEPS = {"clip": ["scene"], "diarization": ["transcript"], "yolo": ["scene"], "ocr": ["scene"]}
-
-def _upsert_job(md, media_id_str: str, engine: str, status: str):
-    """Dual-write: upsert ai_engine_jobs alongside old Asset fields."""
-    from sqlalchemy import text
-    try:
-        deps = _JOB_DEPS.get(engine, [])
-        md.execute(
-            text("""INSERT INTO ai_engine_jobs (media_id, engine_name, status, depends_on, completed_at)
-                     VALUES (:mid, :eng, :st, :deps, NOW())
-                     ON CONFLICT (media_id, engine_name)
-                    DO UPDATE SET status = :st2, completed_at = NOW(), 
-                       error_message = CASE WHEN :st2 = 'completed' THEN NULL ELSE ai_engine_jobs.error_message END"""),
-            {"mid": media_id_str, "eng": engine, "st": status, "deps": deps, "st2": status},
-        )
-        md.commit()
-    except Exception:
-        logger.warning("ai_engine_jobs upsert failed for %s/%s", media_id_str, engine)
-
-
-def _set_job_status(media_id, engine, status):
-    """Self-contained upsert of ai_engine_jobs (opens/closes its own PG session).
-
-    Follows Rule 1 and Rule 6: AI Worker only writes PG via ai_engine_jobs,
-    and ai_engine_jobs is the single write entry point for pipeline status.
-    """
-    try:
-        from models.db import get_pg_session
-        s = get_pg_session()
-        try:
-            _upsert_job(s, media_id, engine, status)
-        finally:
-            s.close()
-    except Exception as e:
-        logger.warning("Failed to set %s job status for %s: %s", engine, media_id, e)
+from job_helpers import set_job_status as _set_job_status
 
 def _timeout_run(func, *args, timeout_seconds=300):
     """Run func(*args) with a timeout. Raises TimeoutError on timeout.

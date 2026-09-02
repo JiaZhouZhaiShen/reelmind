@@ -59,7 +59,6 @@ export function TagBrowse() {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [assetCount, setAssetCount] = useState(0)
   const [orientationFilter, setOrientationFilter] = useState<OrientationFilter>('all')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -132,7 +131,6 @@ export function TagBrowse() {
         setAssets(prev => [...prev, ...mapped])
       }
       setTotalAssets(result.total)
-      setAssetCount(result.total)
       setPage(pageNum)
       setView('assets')
     } catch (e) {
@@ -178,8 +176,8 @@ export function TagBrowse() {
   const filteredAssets = useMemo(() => {
     if (orientationFilter === 'all') return assets
     return assets.filter((a) => {
-      if (a.tags?.includes('横屏')) return orientationFilter === 'landscape'
-      if (a.tags?.includes('竖屏')) return orientationFilter === 'portrait'
+      if (a.tags?.includes('\u6a2a\u5c4f')) return orientationFilter === 'landscape'
+      if (a.tags?.includes('\u7ad6\u5c4f')) return orientationFilter === 'portrait'
       const o = getOrientation(a.width, a.height)
       return o === orientationFilter
     })

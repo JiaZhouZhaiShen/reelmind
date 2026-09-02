@@ -12,7 +12,10 @@ import json
 import logging
 import os
 import re
-from ..api.docker_api import DockerAPI
+try:
+    from ..api.docker_api import DockerAPI
+except Exception:
+    DockerAPI = None  # docker.sock not available — container log features disabled
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -81,8 +84,10 @@ _KNOWN_LEVELS = {"INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL", "WARN"}
 _docker_api: DockerAPI | None = None
 
 
-def _get_docker_api() -> DockerAPI:
+def _get_docker_api():
     global _docker_api
+    if DockerAPI is None:
+        return None
     if _docker_api is None:
         _docker_api = DockerAPI()
     return _docker_api
@@ -90,17 +95,23 @@ def _get_docker_api() -> DockerAPI:
 
 def _check_docker() -> bool:
     """Check if Docker Engine is reachable via Unix socket."""
+    api = _get_docker_api()
+    if api is None:
+        return False
     try:
-        return _get_docker_api().ping()
+        return api.ping()
     except Exception:
         return False
 
 
 async def _container_status(name: str) -> str:
     """Check container status via Docker Engine API."""
+    api = _get_docker_api()
+    if api is None:
+        return "unavailable"
     try:
         info = await asyncio.get_event_loop().run_in_executor(
-            None, _get_docker_api().inspect_container, name
+            None, api.inspect_container, name
         )
         if info is None:
             return "stopped"
@@ -255,8 +266,11 @@ async def _fetch_docker_log(
         return LogResult(source=sid, lines=[], total_lines=0, truncated=False)
 
     # Use Docker Engine API instead of docker CLI
+    api = _get_docker_api()
+    if api is None:
+        return LogResult(source=sid, lines=[], total_lines=0, truncated=False)
     output = await asyncio.get_event_loop().run_in_executor(
-        None, _get_docker_api().container_logs, cname, tail
+        None, api.container_logs, cname, tail
     )
     if not output:
         # Try to get container status
@@ -441,6 +455,9 @@ async def stream_logs(source_id: str) -> AsyncIterator[str]:
 
     # Poll-based streaming via Docker API (sync socket)
     api = _get_docker_api()
+    if api is None:
+        yield f"event: error\ndata: Docker socket not available\n\n"
+        return
     last_lines: set[str] = set()
     try:
         while True:

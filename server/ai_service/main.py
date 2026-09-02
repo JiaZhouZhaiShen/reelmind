@@ -875,16 +875,11 @@ async def reset_asset(video_id: str):
 
         logger.info("Deleted scene thumbnails: %s", thumb_dir)
 
-    # Delete PG engine jobs so pipeline does not skip re-processing
+    # Reset PG engine jobs so pipeline does not skip re-processing
     try:
-        from models.db import get_pg_session
-        from sqlalchemy import text
-        pg = get_pg_session()
-        pg.execute(text("UPDATE ai_engine_jobs SET status = :s, error_message = NULL, retry_count = 0, started_at = NULL, completed_at = NULL WHERE media_id = :mid"), {"s": "pending", "mid": video_id})
-        pg.commit()
-        pg.close()
-        logger.info("Reset PG engine jobs to pending for video %s", video_id)
+        from job_helpers import reset_jobs_for_asset
+        reset_jobs_for_asset(video_id)
     except Exception as e:
-        logger.warning("Failed to delete PG engine jobs for %s: %s", video_id, e)
+        logger.warning("Failed to reset PG engine jobs for %s: %s", video_id, e)
 
     return {"status": "ok", "video_id": video_id}

@@ -33,11 +33,6 @@ const FILTER_OPTIONS: FilterOption[] = [
   { key: "transcript", icon: MessageSquareText, color: "text-gray-400" },
   { key: "diarization", icon: Users, color: "text-gray-400" },
 ]
-function getOrientation(w?: number, h?: number): "landscape" | "portrait" | "square" | undefined {
-  if (!w || !h) return undefined
-  if (w === h) return "square"
-  return w > h ? "landscape" : "portrait"
-}
 type OrientationFilter = "all" | "landscape" | "portrait"
 // ── Compact custom dropdown ──
 function CompactSelect({ value, options, onChange }: {
@@ -45,7 +40,6 @@ function CompactSelect({ value, options, onChange }: {
   options: { value: string; label: string }[]
   onChange: (v: string) => void
 }) {
-  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -141,7 +135,7 @@ export function SearchPage() {
           useSearchStore.setState({ searchInitLoading: true })
         }
       }
-    } catch {}
+    } catch (err) { console.warn('restore search state failed', err) }
     return true
   })
  // ── Responsive cols ──
@@ -189,7 +183,7 @@ export function SearchPage() {
           }
        }
      }
-   } catch {}
+   } catch (err) { console.warn('restore search state failed', err) }
   }, [])
   // ── Save search state to sessionStorage on every change ──
   useEffect(() => {
@@ -348,7 +342,7 @@ export function SearchPage() {
                setDurFilter(v);
                if (v === "custom") return;
                const m = { all: [undefined, undefined], le15: [undefined, 15], le30: [undefined, 30], le1m: [undefined, 60], le5m: [undefined, 300], le10m: [undefined, 600], ge10m: [600, undefined], ge30m: [1800, undefined], custom: [undefined, undefined] };
-               const p = m[v];
+               const p = m[v as keyof typeof m];
                setSearchDurationFilter(p[0], p[1]);
              }}
             />
@@ -377,7 +371,7 @@ export function SearchPage() {
               onChange={(v) => {
                 setSizeFilter(v);
                 const m: Record<string, (number | undefined)[]> = { all: [undefined, undefined], le100m: [undefined, 104857600], le500m: [undefined, 524288000], ge500m: [524288000, undefined], ge1g: [1073741824, undefined] };
-                const p = m[v];
+                const p = m[v as keyof typeof m];
                 setSearchFileSizeFilter(p[0], p[1]);
               }}
             />

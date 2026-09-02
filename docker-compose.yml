@@ -1,6 +1,13 @@
 # =============================================================================
 # ReelMind — Docker Compose for Production / Synology NAS
 # =============================================================================
+#
+# 🔴🔴🔴 安全警告 ｜ SECURITY WARNING 🔴🔴🔴
+# 本文件包含开发默认密码。部署到任何可网络访问的环境前，
+# 必须在 .env 中设置强密码覆盖所有默认值！
+# 尤其是: DB_PASSWORD, JWT_SECRET
+# 🔴🔴🔴 安全警告 ｜ SECURITY WARNING 🔴🔴🔴
+#
 # 使用方法:
 #   1. 复制 .env.example 为 .env，按需修改
 #   2. docker compose up -d
@@ -21,6 +28,7 @@ services:
     restart: always
     shm_size: 256mb
     environment:
+      # 🔴 开发默认密码，生产环境务必在 .env 中覆盖！
       POSTGRES_USER: ${DB_USER:-reelmind}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-reelmind}
       POSTGRES_DB: ${DB_NAME:-reelmind}
@@ -82,11 +90,12 @@ services:
     restart: always
     ports: []
     environment:
-      JWT_SECRET: ${JWT_SECRET?err}   # ⚠ 必须设置，用 python -c "import secrets; print(secrets.token_urlsafe(32))" 生成
+      # 🔴 安全警告: 以下为开发默认值，生产环境务必在 .env 中设置强随机 JWT_SECRET！
+      JWT_SECRET: ${JWT_SECRET:-reelmind-dev-secret-change-me-in-production}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${DB_USER:-reelmind}
-      DB_PASSWORD: ${DB_PASSWORD:-reelmind}
+      DB_USER: ${DB_USER:-reelmind}          # 🔴 默认值，生产环境务必覆盖
+      DB_PASSWORD: ${DB_PASSWORD:-reelmind}  # 🔴 默认值，生产环境务必覆盖
       DB_NAME: ${DB_NAME:-reelmind}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       REDIS_HOST: redis
@@ -114,7 +123,7 @@ services:
       - ./web/dist:/web/dist:ro
       - ./server:/app
       - ./.env:/reelmind.env:rw
-      - /var/run/docker.sock:/var/run/docker.sock
+      # 🔴 docker.sock 已移除（安全加固），详见 docs/安全审计报告_2026-07-30.md §2.2
       - .:/project
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${PORT:-2588}/api/ping"]
@@ -180,6 +189,7 @@ services:
     ports:
       - "2589:2589"
     environment:
+      # 🔴 开发默认密码，生产环境务必在 .env 中覆盖！
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-reelmind}
