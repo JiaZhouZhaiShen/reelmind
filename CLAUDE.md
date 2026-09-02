@@ -53,7 +53,7 @@ Orchestrator: polls PG → schedules AI engine jobs → updates ai_engine_jobs
 ## Key directories
 
 ```
-D:\DockerData\reelmind/
+reelmind/   # 仓库根（即 clone 目录）
 ├── server/
 │   ├── app/              # FastAPI app
 │   │   ├── api/          # Routes

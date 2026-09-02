@@ -42,7 +42,7 @@ Day 1     Day 2          Day 3           Day 4          Day 5
 docker ps
 
 # 2. 进入项目目录
-cd D:\DockerData\reelmind
+cd reelmind
 
 # 3. 确认所有容器 Running
 docker compose ps
