@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # --- App ---
     APP_NAME: str = "ReelMind"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "9.26.0901"
     DEBUG: bool = False
 
     # --- Database (PostgreSQL with pgvector) ---

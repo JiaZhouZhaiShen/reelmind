@@ -46,7 +46,7 @@ logger = logging.getLogger("ai_service")
 
 
 
-app = FastAPI(title="ReelMind AI Service", version="0.1.0")
+app = FastAPI(title="ReelMind AI Service", version="9.26.0901")
 
 
 
