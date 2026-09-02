@@ -13,7 +13,7 @@ dist/
 # Env
 .env
 .env.local
-.env.example
+# .env.example 作为模板必须入库（含占位符，不含真实密钥）
 
 # OS
 .DS_Store
