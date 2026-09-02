@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  iron-rules:
+    name: Iron-rule checks (check.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run iron-rule hard checks
+        run: ./scripts/check.sh
+
+  frontend:
+    name: Frontend typecheck & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+  secret-scan:
+    name: Secret & hygiene scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No real secrets in tracked files
+        run: |
+          if git grep -nE 'ghp_|sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{16}|PRIVATE KEY' -- ':!docs/方案_*' ':!*.example' ':!*\.env\.example'; then
+            echo "::error::Possible secret detected in tracked files"
+            exit 1
+          fi
+          echo "No secrets found."
+      - name: No .env / .bak / backups tracked
+        run: |
+          if git ls-files | grep -E '^\.env$|\.bak$|^backups/'; then
+            echo "::error::Sensitive or backup file is tracked"
+            exit 1
+          fi
+          echo "Index is clean."
