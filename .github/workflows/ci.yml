@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run iron-rule hard checks
-        run: ./scripts/check.sh
+        run: bash ./scripts/check.sh
 
   frontend:
     name: Frontend typecheck & build

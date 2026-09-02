@@ -108,7 +108,7 @@ tmp_mounts.json
 test_save.json
 test_page.html
 test_header.py
-package.json
+/package.json
 pnpm-lock.yaml
 .ai_backup.py
 
