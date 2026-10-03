@@ -16,6 +16,6 @@ RUN npm run build
 
 # ── Stage 2: nginx runtime ──────────────────────────────────────────────────
 FROM nginx:alpine
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --from=web-build /build/dist /web/dist
 EXPOSE 2588
