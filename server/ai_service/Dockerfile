@@ -40,6 +40,10 @@ ENV PYTHONUNBUFFERED=1 \
 COPY server/ai_service/ .
 RUN chmod +x /app/docker-entrypoint.sh
 
+# 共享 server 代码烤入镜像（docker-entrypoint.sh 将 PYTHONPATH 指向 /server），
+# 生产部署不再依赖 ./server:/server 挂载
+COPY server/ /server/
+
 EXPOSE 2589
 
 ENTRYPOINT ["/usr/bin/tini", "--"]

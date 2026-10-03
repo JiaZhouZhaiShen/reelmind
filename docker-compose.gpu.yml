@@ -1,0 +1,23 @@
+# =============================================================================
+# ReelMind — GPU 覆盖文件（NVIDIA runtime）
+# =============================================================================
+# 有 NVIDIA GPU 的机器，在 docker-compose.yml 之上叠加本文件启用 AI 推理：
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# 无 GPU 机器不需要本文件：reelmind-ai 照常启动，
+# AI 功能按 .env 中 ENABLE_WHISPER / ENABLE_CLIP 开关降级。
+# =============================================================================
+services:
+  reelmind-ai:
+    runtime: nvidia
+    environment:
+      CUBLAS_WORKSPACE_CONFIG: ':4096:8'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

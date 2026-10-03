@@ -1,16 +1,21 @@
 # =============================================================================
-# ReelMind — Docker Compose for Production / Synology NAS
+# ReelMind — Docker Compose（生产 / Synology NAS）
 # =============================================================================
 #
 # 🔴🔴🔴 安全警告 ｜ SECURITY WARNING 🔴🔴🔴
-# 本文件包含开发默认密码。部署到任何可网络访问的环境前，
-# 必须在 .env 中设置强密码覆盖所有默认值！
+# 部署到任何可网络访问的环境前，必须在 .env 中设置强密码覆盖默认值！
 # 尤其是: DB_PASSWORD, JWT_SECRET
 # 🔴🔴🔴 安全警告 ｜ SECURITY WARNING 🔴🔴🔴
 #
-# 使用方法:
-#   1. 复制 .env.example 为 .env，按需修改
-#   2. docker compose up -d
+# 快速开始（无需本地构建，前端已烘入镜像）:
+#   1. cp .env.example .env
+#   2. docker compose pull && docker compose up -d
+#
+# 镜像版本: 由 REELMIND_VERSION 控制（默认 latest 跟踪 main；
+#           建议锁定 release tag，如 REELMIND_VERSION=v9.26.1010）
+#
+# GPU 机器启用 AI 推理: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# 本地开发（源码挂载 + 本地构建）: 见 docker-compose.dev.yml
 # =============================================================================
 name: reelmind
 x-logging: &default-logging
@@ -79,12 +84,9 @@ services:
         reservations:
           memory: ${REDIS_MEM_RESERVE:-64M}
 
-  # ReelMind API Server (FastAPI)
+  # ReelMind API Server (FastAPI) — 前端 dist 已烘入镜像 /web/dist
   reelmind-server:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.slim
-    image: ${REELMIND_SERVER_IMAGE:-reelmind/server-slim:latest}
+    image: ghcr.io/jiazhouzhaishen/reelmind-server:${REELMIND_VERSION:-latest}
     container_name: reelmind-server
     logging: *default-logging
     restart: always
@@ -120,11 +122,8 @@ services:
       - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind
       - ${EXTERNAL_MEDIA_DIR:-./media}:/media:ro
       - nas-media:/nas-media:rw
-      - ./web/dist:/web/dist:ro
-      - ./server:/app
+      # 管理页「.env 编辑」功能读取此挂载；不需要该功能可删除此行
       - ./.env:/reelmind.env:rw
-      # 🔴 docker.sock 已移除（安全加固），详见 docs/安全审计报告_2026-07-30.md §2.2
-      - .:/project
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${PORT:-2588}/api/ping"]
       interval: 30s
@@ -148,10 +147,7 @@ services:
 
   # ReelMind Orchestrator — lightweight job scheduler (CPU-only)
   reelmind-orchestrator:
-    build:
-      context: .
-      dockerfile: server/orchestrator/Dockerfile
-    image: ${REELMIND_ORCHESTRATOR_IMAGE:-reelmind/orchestrator:latest}
+    image: ghcr.io/jiazhouzhaishen/reelmind-orchestrator:${REELMIND_VERSION:-latest}
     container_name: reelmind-orchestrator
     logging: *default-logging
     restart: always
@@ -164,7 +160,6 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ./server/orchestrator:/app
       - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind
     networks:
       - reelmind-net
@@ -176,15 +171,12 @@ services:
         reservations:
           memory: ${ORCHESTRATOR_MEM_RESERVE:-32M}
 
-  # ReelMind AI Service — GPU-powered video processing (standalone)
+  # ReelMind AI Service — AI 推理（无 GPU 机器也可启动，AI 功能可关）
+  # GPU 机器请叠加 docker-compose.gpu.yml 启用 NVIDIA runtime
   reelmind-ai:
-    build:
-      context: .
-      dockerfile: server/ai_service/Dockerfile
-    image: ${REELMIND_AI_IMAGE:-reelmind/ai:latest}
+    image: ghcr.io/jiazhouzhaishen/reelmind-ai:${REELMIND_VERSION:-latest}
     container_name: reelmind-ai
     logging: *default-logging
-    runtime: nvidia
     restart: always
     ports:
       - "2589:2589"
@@ -202,9 +194,9 @@ services:
       CACHE_ROOT: /data/reelmind/cache
       MODEL_ROOT: /data/reelmind/models
       ULTRALYTICS_CACHE_DIR: /data/reelmind/models/ultralytics
-      ENABLE_WHISPER: ${ENABLE_WHISPER:-true}
-      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
-      ENABLE_CLIP: ${ENABLE_CLIP:-true}
+      ENABLE_WHISPER: ${ENABLE_WHISPER:-false}
+      WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+      ENABLE_CLIP: ${ENABLE_CLIP:-false}
       HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
       HF_HOME: /data/reelmind/models/huggingface
       HF_HUB_CACHE: /data/reelmind/models/hub
@@ -222,8 +214,6 @@ services:
       - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind
       - ${EXTERNAL_MEDIA_DIR:-./media}:/media:ro
       - nas-media:/nas-media:rw
-      - ./server/ai_service:/app
-      - ./server:/server
     command: ["/app/docker-entrypoint.sh"]
     depends_on:
       postgres:
@@ -245,16 +235,10 @@ services:
           cpus: ${AI_CPU_LIMIT:-16.0}
         reservations:
           memory: ${AI_MEM_RESERVE:-4g}
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-  # nginx reverse proxy (large file zero-copy video)
+
+  # nginx 反向代理（大文件零拷贝视频流）— 前端静态资源已烘入镜像
   nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
-    image: ${REELMIND_NGINX_IMAGE:-reelmind/nginx:latest}
+    image: ghcr.io/jiazhouzhaishen/reelmind-nginx:${REELMIND_VERSION:-latest}
     container_name: reelmind-nginx
     logging: *default-logging
     restart: always
@@ -264,7 +248,6 @@ services:
       - ${EXTERNAL_MEDIA_DIR:-./media}:/media:ro
       - nas-media:/nas-media:ro
       - ${REELMIND_DATA_ROOT:-./data/reelmind}:/data/reelmind:ro
-      - ./web/dist:/web/dist:ro
     depends_on:
       - reelmind-server
     networks:
@@ -281,8 +264,7 @@ networks:
     name: reelmind-network
     driver: bridge
 
+# nas-media 为 compose 自动创建的具名卷（不再要求 external）。
+# 如需指向 NAS 上的已有媒体目录，改用 EXTERNAL_MEDIA_DIR 挂载。
 volumes:
   nas-media:
-    external: true
-
-

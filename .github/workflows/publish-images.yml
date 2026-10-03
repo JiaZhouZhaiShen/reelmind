@@ -78,7 +78,7 @@ jobs:
       - name: Build and push nginx
         uses: docker/build-push-action@v6
         with:
-          context: ./nginx
+          context: .
           file: nginx/Dockerfile
           push: true
           tags: |

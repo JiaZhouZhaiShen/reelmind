@@ -31,34 +31,9 @@ ReelMind manages thousands of video assets, auto-extracts scenes / subtitles / o
 |---|---|---|
 | ![Search results](docs/images/search-results.png) | ![Video player](docs/images/video-player.png) | ![AI engine](docs/images/ai-engine.png) |
 
-## Deploy from GitHub Container Registry (ghcr)
-
-Prebuilt images are published to GHCR, so you can skip `docker compose build`:
-
-```bash
-git clone https://github.com/JiaZhouZhaiShen/reelmind.git
-cd reelmind
-
-# 1. Configure environment (template is committed; placeholder only, no secrets)
-cp .env.example .env
-
-# 2. Build the frontend once (v1: web/dist is mounted read-only, not baked into images yet)
-cd web && npm install && npm run build && cd ..
-
-# 3. Point compose at GHCR images. `latest` tracks main; pin a release tag (e.g. :v9.26.0901) when available
-export REELMIND_SERVER_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-server:latest
-export REELMIND_ORCHESTRATOR_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-orchestrator:latest
-export REELMIND_AI_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-ai:latest
-export REELMIND_NGINX_IMAGE=ghcr.io/jiazhouzhaishen/reelmind-nginx:latest
-
-# 4. Pull and start (no local image build)
-docker compose pull
-docker compose up -d
-```
-
-Without those variables the default stays unchanged: `docker compose build && docker compose up -d` builds locally.
-
 ## Quick Start
+
+No frontend build, no image build — prebuilt images are pulled from GHCR (frontend is baked into the images):
 
 ```bash
 git clone https://github.com/JiaZhouZhaiShen/reelmind.git
@@ -68,23 +43,20 @@ cd reelmind
 cp .env.example .env
 #    🔴 Edit .env: set strong DB_PASSWORD and JWT_SECRET (openssl rand -hex 32)
 
-# 2. Build frontend (web/dist is mounted read-only into containers)
-cd web && npm install && npm run build && cd ..
-
-# 3. Build images locally and start (registry alternative: see "Deploy from ghcr" above)
-docker compose build
+# 2. Pull and start
+docker compose pull
 docker compose up -d
 
-# 4. Verify
+# 3. Verify
 curl http://localhost:2588/api/ping
-curl http://localhost:2589/health
 # Open http://localhost:2588
 ```
 
 **First user = admin:** the very first registered account gets the `admin` role automatically.
 
-> GPU note: `reelmind-ai` uses `runtime: nvidia` (CUDA 12.4). Without a GPU, disable AI (`ENABLE_WHISPER=false`, `ENABLE_CLIP=false`) or remove the runtime line — the app still works as a video manager / search tool.
-> First AI run downloads models automatically into the data volume (whisper large-v3 ≈ 3GB+).
+> GPU note: without an NVIDIA GPU, `reelmind-ai` still starts (AI features toggle off via `ENABLE_WHISPER` / `ENABLE_CLIP`) — the app works as a video manager / search tool. On GPU machines, enable CUDA with `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`.
+> First AI run downloads models automatically into the data volume (whisper large-v3 ≈ 3GB+, tiny ≈ 1GB).
+> Version pinning: set `REELMIND_VERSION` in `.env` (default `latest` tracks main; pin a release tag like `v9.26.1010` for production).
 
 ## Features
 
@@ -101,8 +73,9 @@ curl http://localhost:2589/health
 | `DB_PASSWORD` / `JWT_SECRET` | `change-me` | 🔴 must be replaced in production |
 | `EXTERNAL_MEDIA_DIR` | `./media` | media library root (mount a NAS/share here) |
 | `PORT_MAP` | `0.0.0.0:2588` | external port |
-| `ENABLE_WHISPER` / `WHISPER_MODEL` | `true` / `large-v3` | use `tiny` on low-memory devices |
-| `ENABLE_CLIP` | `true` | semantic search (~2GB extra RAM) |
+| `ENABLE_WHISPER` / `WHISPER_MODEL` | `false` / `tiny` | set `true` to enable; `large-v3` needs ~10GB RAM / GPU |
+| `ENABLE_CLIP` | `false` | semantic search (~2GB extra RAM) |
+| `REELMIND_VERSION` | `latest` | image tag; pin a release (e.g. `v9.26.1010`) in production |
 
 Full list: see `.env.example` comments.
 
@@ -117,7 +90,16 @@ Full list: see `.env.example` comments.
 
 ## Development
 
+Developers use the dev overlay (source bind mounts + local image builds):
+
 ```bash
+# Build frontend (dev only — prod images already contain it)
+cd web && npm install && npm run build
+
+# Build images locally and start with source mounts
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
 # Backend (live reload via bind mount — restart container, no rebuild)
 docker compose restart reelmind-server reelmind-ai reelmind-orchestrator
 
